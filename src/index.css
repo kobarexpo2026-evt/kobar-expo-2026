@@ -1,0 +1,85 @@
+@import "tailwindcss";
+
+@theme {
+  --font-fredoka: "Fredoka", cursive, sans-serif;
+  --font-baloo: "Baloo 2", cursive, sans-serif;
+  
+  --color-festival-sand: #FFFDF7;
+  --color-festival-sand-dark: #18120E;
+  --color-festival-card: #FFFFFF;
+  --color-festival-card-dark: #241B15;
+  --color-festival-border: #EADBCC;
+  --color-festival-border-dark: #3D2F25;
+
+  --color-festival-yellow: #F59E0B;
+  --color-festival-yellow-hover: #D97706;
+  --color-festival-yellow-light: #FEF3C7;
+
+  --color-festival-green: #0D9488;
+  --color-festival-green-hover: #0F766E;
+  --color-festival-green-light: #CCFBF1;
+
+  --color-festival-blue: #0284C7;
+  --color-festival-blue-hover: #0369A1;
+  --color-festival-blue-light: #E0F2FE;
+
+  --color-festival-coral: #E11D48;
+  --color-festival-coral-hover: #BE123C;
+  --color-festival-coral-light: #FFE4E6;
+
+  --color-festival-ink: #292019;
+  --color-festival-ink-muted: #786A5E;
+  --color-festival-ink-dark: #FAF4EE;
+  --color-festival-ink-muted-dark: #B3A194;
+}
+
+:root {
+  color-scheme: light;
+  font-family: var(--font-baloo);
+}
+
+.dark {
+  color-scheme: dark;
+}
+
+/* Festival background dot pattern */
+.bg-festival-pattern {
+  background-color: #FFFDF7;
+  background-image: radial-gradient(#E8DFC8 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+.dark .bg-festival-pattern {
+  background-color: #18120E;
+  background-image: radial-gradient(#30231B 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+/* Festival Ribbon badge */
+.festival-ribbon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-fredoka);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -2px rgba(0, 0, 0, 0.06);
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #D9CBBF;
+  border-radius: 9999px;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: #4A382D;
+}

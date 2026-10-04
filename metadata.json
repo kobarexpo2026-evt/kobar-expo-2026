@@ -1,0 +1,6 @@
+{
+  "name": "KOBAR EXPO 2026 – EOMS",
+  "description": "Sistem Manajemen Event Organizer & Pendaftaran Resmi Kotawaringin Barat Expo (KOBAR EXPO)",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
