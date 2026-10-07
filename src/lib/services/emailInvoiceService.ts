@@ -1,7 +1,9 @@
 import { supabase, isSupabaseConfigured } from '../supabase/client';
 import { Registration, EventItem } from '../../types/database';
 import { formatDateIndo, formatRupiah } from '../utils';
+import { sendGmailMessage, getGoogleAccessToken, getCurrentGoogleUser } from '../google/gmailService';
 import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 export interface EmailTemplateItem {
   id?: string;
@@ -354,13 +356,212 @@ export const emailInvoiceService = {
 </div>`;
   },
 
-  // Send email via backend proxy route (/api/send-email) with Resend
+  // Automatically trigger email based on current registration status or custom trigger
+  async triggerAutoEmail(registration: Registration, triggerKey?: string): Promise<{ success: boolean; simulated?: boolean; messageId?: string }> {
+    try {
+      if (!registration.email || !registration.event_id) {
+        return { success: false };
+      }
+
+      const key = triggerKey || `${registration.status_bayar}|${registration.status_lulus}`;
+      const templates = await this.getEmailTemplates(registration.event_id);
+      const matchedTemplate = templates.find((t) => t.trigger_key === key && t.aktif);
+      
+      if (!matchedTemplate) {
+        return { success: false };
+      }
+
+      const renderedSubject = this.replacePlaceholders(matchedTemplate.subjek, registration);
+      let renderedHtml = this.replacePlaceholders(matchedTemplate.isi_html, registration);
+
+      if (matchedTemplate.include_ticket || key === 'PENDAFTARAN_DITERIMA' || key === 'Lunas|Lulus') {
+        renderedHtml += this.generateVisualTicketHtml(registration);
+      }
+
+      const attachments: { filename: string; content: string }[] = [];
+
+      // Automatically attach PDF invoice if template has attach_invoice enabled
+      if (matchedTemplate.attach_invoice) {
+        try {
+          const pdfBase64 = this.generateInvoicePdfBase64(registration);
+          if (pdfBase64) {
+            attachments.push({
+              filename: `Invoice-KOBAR-EXPO-${registration.reg_id}.pdf`,
+              content: pdfBase64,
+            });
+          }
+        } catch (pdfErr) {
+          console.warn('Failed to generate PDF attachment:', pdfErr);
+        }
+      }
+
+      return await this.sendEmail({
+        to: registration.email,
+        subject: renderedSubject,
+        html: renderedHtml,
+        attachments: attachments.length > 0 ? attachments : undefined,
+      });
+    } catch (err) {
+      console.error('triggerAutoEmail error:', err);
+      return { success: false };
+    }
+  },
+
+  // Generate PDF Invoice as base64 string using jsPDF & autoTable
+  generateInvoicePdfBase64(registration: Registration): string {
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4',
+    });
+
+    const amberColor = [217, 119, 6];
+    const darkColor = [28, 25, 23];
+    const grayColor = [120, 113, 108];
+
+    // Header Title
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(18);
+    doc.setTextColor(amberColor[0], amberColor[1], amberColor[2]);
+    doc.text('KOBAR EXPO 2026', 14, 20);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(grayColor[0], grayColor[1], grayColor[2]);
+    doc.text('Pemerintah Kabupaten Kotawaringin Barat', 14, 25);
+    doc.text('Tanda Bukti Registrasi & Invoice Resmi', 14, 29);
+
+    // Invoice Box Right
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
+    doc.text(`INVOICE: ${registration.reg_id}`, 196, 20, { align: 'right' });
+    
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(grayColor[0], grayColor[1], grayColor[2]);
+    doc.text(`Tanggal: ${formatDateIndo(registration.created_at || new Date().toISOString())}`, 196, 25, { align: 'right' });
+    doc.text(`Status: ${registration.status_bayar}`, 196, 29, { align: 'right' });
+
+    doc.setDrawColor(220, 220, 220);
+    doc.line(14, 34, 196, 34);
+
+    // Bill To & Event Details
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9.5);
+    doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
+    doc.text('DITERBITKAN UNTUK:', 14, 42);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.text(`Nama: ${registration.nama}`, 14, 48);
+    doc.text(`Email: ${registration.email}`, 14, 53);
+    doc.text(`WhatsApp: ${registration.wa}`, 14, 58);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9.5);
+    doc.text('RINCIAN AGENDA:', 110, 42);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.text(`Event: ${registration.event_nama || 'KOBAR EXPO 2026'}`, 110, 48);
+    doc.text(`Status Kelulusan: ${registration.status_lulus}`, 110, 53);
+    doc.text('Lokasi: Pangkalan Bun, Kotawaringin Barat', 110, 58);
+
+    // Table
+    autoTable(doc, {
+      startY: 65,
+      head: [['No', 'Deskripsi Layanan / Kegiatan', 'Status Bayar', 'Total Biaya']],
+      body: [
+        [
+          '1',
+          `Biaya Pendaftaran / Partisipasi: ${registration.event_nama || 'KOBAR EXPO 2026'}\nNomor Registrasi: ${registration.reg_id}`,
+          registration.status_bayar,
+          formatRupiah(registration.event_harga || 0),
+        ],
+      ],
+      headStyles: {
+        fillColor: [245, 158, 11],
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+      },
+      styles: {
+        fontSize: 9,
+        cellPadding: 4,
+      },
+      columnStyles: {
+        0: { cellWidth: 12, halign: 'center' },
+        1: { cellWidth: 100 },
+        2: { cellWidth: 35, halign: 'center' },
+        3: { cellWidth: 35, halign: 'right' },
+      },
+    });
+
+    const finalY = (doc as any).lastAutoTable?.finalY || 95;
+
+    // Total box
+    doc.setFillColor(254, 243, 199);
+    doc.rect(120, finalY + 6, 76, 18, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9.5);
+    doc.setTextColor(180, 83, 9);
+    doc.text('TOTAL PEMBAYARAN:', 124, finalY + 13);
+    doc.setFontSize(11.5);
+    doc.setTextColor(13, 148, 136);
+    doc.text(formatRupiah(registration.event_harga || 0), 192, finalY + 19, { align: 'right' });
+
+    // Footer note
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(grayColor[0], grayColor[1], grayColor[2]);
+    doc.text('Dokumen ini adalah tanda bukti transaksi dan invoice resmi yang diterbitkan secara elektronik oleh Panitia KOBAR EXPO 2026.', 14, finalY + 36);
+    doc.text('Harap simpan dokumen ini sebagai bukti sah keikutsertaan Anda.', 14, finalY + 41);
+
+    const dataUri = doc.output('datauristring');
+    return dataUri.split(',')[1] || '';
+  },
+
+  // Send email via Google Workspace Gmail API (if connected) or backend server proxy
   async sendEmail(payload: {
     to: string;
     subject: string;
     html: string;
     attachments?: { filename: string; content: string }[];
-  }): Promise<{ success: boolean; simulated?: boolean; messageId?: string; error?: string }> {
+  }): Promise<{ success: boolean; simulated?: boolean; messageId?: string; error?: string; via?: 'gmail' | 'server' }> {
+    // 1. If Google Workspace / Gmail is authenticated by the user, send directly via official Gmail API
+    const googleToken = getGoogleAccessToken();
+    const googleUser = getCurrentGoogleUser();
+
+    if (googleToken && googleUser) {
+      try {
+        const gmailAttachments = payload.attachments?.map((a) => ({
+          filename: a.filename,
+          mimeType: 'application/pdf',
+          base64Content: a.content,
+        }));
+
+        const gmailRes = await sendGmailMessage({
+          to: payload.to,
+          subject: payload.subject,
+          html: payload.html,
+          attachments: gmailAttachments,
+        });
+
+        if (gmailRes.success) {
+          return {
+            success: true,
+            messageId: gmailRes.id,
+            simulated: false,
+            via: 'gmail',
+          };
+        } else {
+          console.warn('Gmail API returned error, falling back to server dispatch:', gmailRes.error);
+        }
+      } catch (gmailErr: any) {
+        console.warn('Gmail API failed, trying server fallback:', gmailErr);
+      }
+    }
+
+    // 2. Fallback to server route /api/send-email
     try {
       const response = await fetch('/api/send-email', {
         method: 'POST',
@@ -368,21 +569,27 @@ export const emailInvoiceService = {
         body: JSON.stringify(payload),
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        return { success: true, simulated: data.simulated, messageId: data.id };
+      const data = await response.json();
+      if (response.ok && data.success) {
+        return { 
+          success: true, 
+          simulated: data.simulated, 
+          messageId: data.id,
+          via: 'server'
+        };
+      } else {
+        return {
+          success: false,
+          error: data.error || 'Gagal mengirim email.',
+        };
       }
-    } catch {
-      // ignore network errors and fallback to simulator
+    } catch (err: any) {
+      console.error('sendEmail network error:', err);
+      return {
+        success: false,
+        error: err.message || 'Gagal menghubungi server.',
+      };
     }
-
-    // Graceful offline simulator fallback
-    console.log('[Resend Email Simulator] Sending to:', payload.to, 'Subject:', payload.subject);
-    return {
-      success: true,
-      simulated: true,
-      messageId: `sim_${Date.now()}`,
-    };
   },
 
   // Download printable PDF invoice for a registration

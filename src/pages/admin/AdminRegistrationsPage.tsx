@@ -31,7 +31,17 @@ import {
   AlertCircle,
   MoreHorizontal,
   Printer,
-  Mail
+  Mail,
+  Eye,
+  ZoomIn,
+  Image as ImageIcon,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown,
+  GripVertical,
+  RotateCcw,
+  Sparkles,
+  SlidersHorizontal
 } from 'lucide-react';
 
 const DEFAULT_COLUMNS: ColumnConfig[] = [
@@ -54,14 +64,32 @@ export const AdminRegistrationsPage: React.FC = () => {
   const [registrations, setRegistrations] = useState<Registration[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Filters
+  // Filters & Search
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTabStatusBayar, setActiveTabStatusBayar] = useState<string>('ALL');
   const [activeStatusLulus, setActiveStatusLulus] = useState<string>('ALL');
 
-  // Columns Configuration
-  const [columns, setColumns] = useState<ColumnConfig[]>(DEFAULT_COLUMNS);
+  // Sorting State (Ascending / Descending)
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>({
+    key: 'created_at',
+    direction: 'desc',
+  });
+
+  // Columns Configuration & Drag-and-Drop state
+  const [columns, setColumns] = useState<ColumnConfig[]>(() => {
+    try {
+      const saved = localStorage.getItem('kobar_expo_reg_columns');
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (e) {
+      // fallback
+    }
+    return DEFAULT_COLUMNS;
+  });
   const [isColumnModalOpen, setIsColumnModalOpen] = useState(false);
+  const [draggedColIndex, setDraggedColIndex] = useState<number | null>(null);
+  const [dragOverColIndex, setDragOverColIndex] = useState<number | null>(null);
 
   // Selection & Bulk Actions
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -69,8 +97,95 @@ export const AdminRegistrationsPage: React.FC = () => {
 
   // Modals
   const [galleryRegistration, setGalleryRegistration] = useState<Registration | null>(null);
+  const [galleryInitialIndex, setGalleryInitialIndex] = useState<number>(0);
   const [editStatusRegistration, setEditStatusRegistration] = useState<Registration | null>(null);
   const [resendEmailRegistration, setResendEmailRegistration] = useState<Registration | null>(null);
+
+  // Save column order & visibility to localStorage
+  const saveColumnsToStorage = (newCols: ColumnConfig[]) => {
+    setColumns(newCols);
+    try {
+      localStorage.setItem('kobar_expo_reg_columns', JSON.stringify(newCols));
+    } catch (e) {
+      // ignore
+    }
+  };
+
+  // Reset columns to default
+  const handleResetColumns = () => {
+    saveColumnsToStorage(DEFAULT_COLUMNS);
+  };
+
+  // Toggle sorting on click
+  const handleSort = (columnKey: string) => {
+    if (columnKey === 'no') return; // Do not sort on row number
+
+    setSortConfig((prev) => {
+      if (!prev || prev.key !== columnKey) {
+        return { key: columnKey, direction: 'asc' };
+      }
+      if (prev.direction === 'asc') {
+        return { key: columnKey, direction: 'desc' };
+      }
+      return null; // Cycle to no sort
+    });
+  };
+
+  // Drag and drop column headers on table
+  const handleHeaderDragStart = (e: React.DragEvent, visibleIndex: number) => {
+    setDraggedColIndex(visibleIndex);
+    e.dataTransfer.effectAllowed = 'move';
+    if (e.currentTarget instanceof HTMLElement) {
+      e.currentTarget.style.opacity = '0.5';
+    }
+  };
+
+  const handleHeaderDragOver = (e: React.DragEvent, visibleIndex: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (draggedColIndex !== null && draggedColIndex !== visibleIndex) {
+      setDragOverColIndex(visibleIndex);
+    }
+  };
+
+  const handleHeaderDrop = (e: React.DragEvent, targetVisibleIndex: number) => {
+    e.preventDefault();
+    if (draggedColIndex === null || draggedColIndex === targetVisibleIndex) {
+      setDraggedColIndex(null);
+      setDragOverColIndex(null);
+      return;
+    }
+
+    const visibleCols = columns.filter((c) => c.visible);
+    const sourceCol = visibleCols[draggedColIndex];
+    const targetCol = visibleCols[targetVisibleIndex];
+
+    if (!sourceCol || !targetCol) {
+      setDraggedColIndex(null);
+      setDragOverColIndex(null);
+      return;
+    }
+
+    // Reorder in full columns list
+    const originalSourceIdx = columns.findIndex((c) => c.key === sourceCol.key);
+    const originalTargetIdx = columns.findIndex((c) => c.key === targetCol.key);
+
+    const updated = [...columns];
+    const [moved] = updated.splice(originalSourceIdx, 1);
+    updated.splice(originalTargetIdx, 0, moved);
+
+    saveColumnsToStorage(updated);
+    setDraggedColIndex(null);
+    setDragOverColIndex(null);
+  };
+
+  const handleHeaderDragEnd = (e: React.DragEvent) => {
+    if (e.currentTarget instanceof HTMLElement) {
+      e.currentTarget.style.opacity = '1';
+    }
+    setDraggedColIndex(null);
+    setDragOverColIndex(null);
+  };
 
   // Load events
   useEffect(() => {
@@ -135,6 +250,46 @@ export const AdminRegistrationsPage: React.FC = () => {
       ditolak: registrations.filter((r) => r.status_bayar === 'Ditolak').length,
     };
   }, [registrations]);
+
+  // Sorted registrations based on sortConfig (Ascending / Descending)
+  const sortedRegistrations = useMemo(() => {
+    if (!sortConfig) return registrations;
+
+    const { key, direction } = sortConfig;
+    return [...registrations].sort((a, b) => {
+      let valA: any = '';
+      let valB: any = '';
+
+      if (key === 'no') {
+        return 0;
+      } else if (key === 'created_at') {
+        valA = new Date(a.created_at || 0).getTime();
+        valB = new Date(b.created_at || 0).getTime();
+      } else if (key === 'lampiran') {
+        valA = Object.values(a.answers || {}).filter(Boolean).length;
+        valB = Object.values(b.answers || {}).filter(Boolean).length;
+      } else if (key.startsWith('dyn_')) {
+        const fieldLabel = key.replace('dyn_', '');
+        valA = (a.answers || {})[fieldLabel] || '';
+        valB = (b.answers || {})[fieldLabel] || '';
+      } else {
+        valA = (a as any)[key] ?? '';
+        valB = (b as any)[key] ?? '';
+      }
+
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        return direction === 'asc' ? valA - valB : valB - valA;
+      }
+
+      const strA = String(valA).toLowerCase();
+      const strB = String(valB).toLowerCase();
+      if (direction === 'asc') {
+        return strA.localeCompare(strB, 'id', { numeric: true });
+      } else {
+        return strB.localeCompare(strA, 'id', { numeric: true });
+      }
+    });
+  }, [registrations, sortConfig]);
 
   // Selection handlers
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -386,23 +541,82 @@ export const AdminRegistrationsPage: React.FC = () => {
       <div className="rounded-2xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-[#201813] shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs font-baloo">
-            <thead className="bg-stone-50 dark:bg-stone-900 border-b border-stone-200 dark:border-stone-800 text-stone-600 dark:text-stone-400 uppercase text-[10px] tracking-wider font-fredoka">
+            <thead className="bg-stone-50 dark:bg-stone-900 border-b border-stone-200 dark:border-stone-800 text-stone-600 dark:text-stone-400 uppercase text-[10px] tracking-wider font-fredoka select-none">
               <tr>
                 {/* Select All Checkbox */}
                 <th className="p-3.5 w-10 text-center">
                   <input
                     type="checkbox"
-                    checked={registrations.length > 0 && selectedIds.length === registrations.length}
+                    checked={sortedRegistrations.length > 0 && selectedIds.length === sortedRegistrations.length}
                     onChange={handleSelectAll}
                     className="rounded text-amber-500 focus:ring-amber-400 cursor-pointer"
                   />
                 </th>
 
-                {columns.filter((c) => c.visible).map((col) => (
-                  <th key={col.key} className="p-3.5 whitespace-nowrap">
-                    {col.label}
-                  </th>
-                ))}
+                {columns.filter((c) => c.visible).map((col, visibleIdx) => {
+                  const isSorted = sortConfig?.key === col.key;
+                  const sortDir = sortConfig?.direction;
+                  const isOver = dragOverColIndex === visibleIdx;
+                  const isDragging = draggedColIndex === visibleIdx;
+
+                  return (
+                    <th
+                      key={col.key}
+                      draggable={col.key !== 'no'}
+                      onDragStart={(e) => handleHeaderDragStart(e, visibleIdx)}
+                      onDragOver={(e) => handleHeaderDragOver(e, visibleIdx)}
+                      onDrop={(e) => handleHeaderDrop(e, visibleIdx)}
+                      onDragEnd={handleHeaderDragEnd}
+                      className={`p-3 whitespace-nowrap transition-all ${
+                        isDragging ? 'opacity-30 bg-amber-100 dark:bg-amber-950/60' : ''
+                      } ${
+                        isOver ? 'border-l-4 border-amber-500 bg-amber-50 dark:bg-amber-950/30' : ''
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 group">
+                        {/* Drag Handle */}
+                        {col.key !== 'no' && (
+                          <span 
+                            className="cursor-grab active:cursor-grabbing text-stone-400 hover:text-amber-500 transition-colors"
+                            title="Tahan & geser untuk mengubah urutan kolom"
+                          >
+                            <GripVertical className="w-3.5 h-3.5 opacity-40 group-hover:opacity-100" />
+                          </span>
+                        )}
+
+                        {/* Column Title & Sort Button */}
+                        <button
+                          type="button"
+                          onClick={() => handleSort(col.key)}
+                          className={`inline-flex items-center gap-1 cursor-pointer font-fredoka hover:text-amber-600 dark:hover:text-amber-400 transition-colors ${
+                            isSorted ? 'text-amber-600 dark:text-amber-400 font-bold' : ''
+                          }`}
+                          title={`Klik untuk urutkan ${col.label} (Ascending/Descending)`}
+                        >
+                          <span>{col.label}</span>
+
+                          {col.key !== 'no' && (
+                            <span className="shrink-0">
+                              {isSorted ? (
+                                sortDir === 'asc' ? (
+                                  <span className="p-0.5 rounded-md bg-amber-500 text-white font-bold inline-flex items-center">
+                                    <ArrowUp className="w-3 h-3" />
+                                  </span>
+                                ) : (
+                                  <span className="p-0.5 rounded-md bg-amber-500 text-white font-bold inline-flex items-center">
+                                    <ArrowDown className="w-3 h-3" />
+                                  </span>
+                                )
+                              ) : (
+                                <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-100 text-stone-400" />
+                              )}
+                            </span>
+                          )}
+                        </button>
+                      </div>
+                    </th>
+                  );
+                })}
 
                 <th className="p-3.5 text-right whitespace-nowrap">Aksi</th>
               </tr>
@@ -415,7 +629,7 @@ export const AdminRegistrationsPage: React.FC = () => {
                     Memuat data pendaftar...
                   </td>
                 </tr>
-              ) : registrations.length === 0 ? (
+              ) : sortedRegistrations.length === 0 ? (
                 <tr>
                   <td colSpan={columns.filter((c) => c.visible).length + 2} className="p-8 text-center text-stone-400 space-y-1">
                     <p className="font-semibold">Tidak ada pendaftar yang sesuai filter.</p>
@@ -423,7 +637,7 @@ export const AdminRegistrationsPage: React.FC = () => {
                   </td>
                 </tr>
               ) : (
-                registrations.map((r, idx) => {
+                sortedRegistrations.map((r, idx) => {
                   const isChecked = selectedIds.includes(r.id);
 
                   // Count files or signatures
@@ -534,17 +748,59 @@ export const AdminRegistrationsPage: React.FC = () => {
                           );
                         }
                         if (col.key === 'lampiran') {
+                          // Extract file items for direct thumbnail preview
+                          const fileEntries: string[] = [];
+                          Object.entries(answers).forEach(([k, v]) => {
+                            if (!v) return;
+                            const s = String(v);
+                            if (s.endsWith('.jpg') || s.endsWith('.jpeg') || s.endsWith('.png') || s.endsWith('.webp') || s.endsWith('.pdf') || s.startsWith('data:') || s.startsWith('http') || k.toLowerCase().includes('ttd') || s.includes('Tanda Tangan')) {
+                              fileEntries.push(s);
+                            }
+                          });
+
+                          const fileCount = fileEntries.length;
+                          const firstFile = fileEntries[0] || '';
+                          const isFirstImage = !firstFile.endsWith('.pdf');
+
                           return (
                             <td key={col.key} className="p-3.5 whitespace-nowrap">
-                              {hasAttachments ? (
+                              {fileCount > 0 ? (
                                 <button
                                   type="button"
-                                  onClick={() => setGalleryRegistration(r)}
-                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-900 text-teal-700 dark:text-teal-300 text-xs font-semibold hover:bg-teal-100 transition-colors cursor-pointer"
-                                  title="Lihat seluruh lampiran & TTD"
+                                  onClick={() => {
+                                    setGalleryInitialIndex(0);
+                                    setGalleryRegistration(r);
+                                  }}
+                                  className="group inline-flex items-center gap-2 p-1 pr-2.5 rounded-xl border border-stone-200 dark:border-stone-800 bg-stone-50/80 dark:bg-stone-900/60 hover:bg-amber-50 dark:hover:bg-amber-950/30 hover:border-amber-400 dark:hover:border-amber-600 transition-all cursor-pointer select-none text-left"
+                                  title="Klik untuk Preview Langsung, Zoom, dan Unduh Lampiran"
                                 >
-                                  <Paperclip className="w-3 h-3" />
-                                  <span>Lampiran</span>
+                                  {/* Direct Thumbnail Preview */}
+                                  <div className="relative w-8 h-8 rounded-lg overflow-hidden bg-stone-200 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 shrink-0 shadow-2xs group-hover:scale-105 transition-transform flex items-center justify-center">
+                                    {isFirstImage ? (
+                                      <img
+                                        src={firstFile.startsWith('http') || firstFile.startsWith('data:') ? firstFile : 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&w=150&q=80'}
+                                        alt="Preview"
+                                        className="w-full h-full object-cover"
+                                      />
+                                    ) : (
+                                      <FileText className="w-4 h-4 text-rose-500" />
+                                    )}
+
+                                    <div className="absolute inset-0 bg-black/35 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                                      <ZoomIn className="w-3.5 h-3.5 text-white" />
+                                    </div>
+                                  </div>
+
+                                  {/* Label & Count Badge */}
+                                  <div className="flex flex-col">
+                                    <span className="text-xs font-semibold text-stone-800 dark:text-stone-200 group-hover:text-amber-600 dark:group-hover:text-amber-400 flex items-center gap-1">
+                                      <span>Preview</span>
+                                      <ZoomIn className="w-3 h-3 text-stone-400 group-hover:text-amber-500" />
+                                    </span>
+                                    <span className="text-[10px] text-stone-500 font-mono">
+                                      {fileCount} Berkas
+                                    </span>
+                                  </div>
                                 </button>
                               ) : (
                                 <span className="text-stone-400 text-[11px]">-</span>
@@ -646,7 +902,8 @@ export const AdminRegistrationsPage: React.FC = () => {
         isOpen={isColumnModalOpen}
         columns={columns}
         onToggleColumn={handleToggleColumn}
-        onResetColumns={() => setColumns(DEFAULT_COLUMNS)}
+        onReorderColumns={saveColumnsToStorage}
+        onResetColumns={handleResetColumns}
         onSave={() => setIsColumnModalOpen(false)}
         onClose={() => setIsColumnModalOpen(false)}
       />
@@ -655,6 +912,7 @@ export const AdminRegistrationsPage: React.FC = () => {
       <AttachmentGalleryModal
         isOpen={Boolean(galleryRegistration)}
         registration={galleryRegistration}
+        initialIndex={galleryInitialIndex}
         onClose={() => setGalleryRegistration(null)}
       />
 

@@ -9,6 +9,7 @@ import {
 } from '../../lib/services/emailInvoiceService';
 import { EmailTemplateEditor } from '../../components/admin/templates/EmailTemplateEditor';
 import { InvoiceTemplateEditor } from '../../components/admin/templates/InvoiceTemplateEditor';
+import { GoogleWorkspaceConnectCard } from '../../components/admin/templates/GoogleWorkspaceConnectCard';
 import { Badge } from '../../components/ui/Badge';
 import { useAuth } from '../../context/AuthContext';
 import { 
@@ -129,7 +130,7 @@ export const AdminTemplatesPage: React.FC = () => {
           }`}
         >
           <Mail className="w-3.5 h-3.5" />
-          <span>Tab 1: Email Otomatis (Resend)</span>
+          <span>Tab 1: Email Otomatis (Google Workspace & Resend)</span>
         </button>
 
         <button
@@ -144,6 +145,11 @@ export const AdminTemplatesPage: React.FC = () => {
           <span>Tab 2: Template Invoice PDF</span>
         </button>
       </div>
+
+      {/* Google Workspace Connection Card if in email tab */}
+      {activeTab === 'email' && (
+        <GoogleWorkspaceConnectCard />
+      )}
 
       {/* Content Rendering */}
       {loading ? (

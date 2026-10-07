@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Registration, StatusBayar, StatusLulus } from '../../../types/database';
 import { registrationService } from '../../../lib/services/registrationService';
+import { emailInvoiceService } from '../../../lib/services/emailInvoiceService';
 import { Button } from '../../ui/Button';
 import { X, CheckCircle, AlertCircle, Save } from 'lucide-react';
 
@@ -35,6 +36,13 @@ export const EditStatusModal: React.FC<EditStatusModalProps> = ({
     if (res.error) {
       setErrorMsg(res.error);
     } else {
+      // Fire-and-forget status notification email
+      emailInvoiceService.triggerAutoEmail({
+        ...registration,
+        status_bayar: statusBayar,
+        status_lulus: statusLulus,
+      }).catch(() => {});
+
       onSuccess();
       onClose();
     }

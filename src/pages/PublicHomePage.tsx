@@ -9,6 +9,7 @@ import { formatRupiah } from '../lib/utils';
 import { EventItem, Registration } from '../types/database';
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
 import { eventService } from '../lib/services/eventService';
+import { registrationService } from '../lib/services/registrationService';
 import { RegistrationFormModal } from '../components/public/RegistrationFormModal';
 import { InvitationModal } from '../components/public/InvitationModal';
 import { RegistrationSuccessModal, RegistrationSuccessData } from '../components/public/RegistrationSuccessModal';
@@ -105,7 +106,7 @@ export const PublicHomePage: React.FC<PublicHomePageProps> = ({ onNavigateAdmin 
     } else {
       // Query local storage actual registrations if offline
       const allRegs = await registrationService.getRegistrations();
-      const match = allRegs.find((r) => r.reg_id.toUpperCase() === cleanId);
+      const match = allRegs.find((r: Registration) => r.reg_id.toUpperCase() === cleanId);
       if (match) {
         setStatusResult(match);
       } else {
@@ -462,12 +463,9 @@ export const PublicHomePage: React.FC<PublicHomePageProps> = ({ onNavigateAdmin 
       </main>
 
       {/* Public Footer */}
-      <footer className="mt-16 border-t-2 border-amber-200/50 dark:border-stone-800 bg-white/60 dark:bg-[#18120E]/60 py-8 px-4 text-center space-y-2">
+      <footer className="mt-16 border-t-2 border-amber-200/50 dark:border-stone-800 bg-white/60 dark:bg-[#18120E]/60 py-8 px-4 text-center">
         <p className="font-fredoka font-bold text-sm text-stone-800 dark:text-stone-200">
           KOBAR EXPO 2026 &bull; EVENT ORGANIZER MANAGEMENT SYSTEM
-        </p>
-        <p className="text-xs text-stone-500 dark:text-stone-400 font-baloo max-w-lg mx-auto">
-          Dikelola oleh Panitia Resmi Pemerintah Kabupaten Kotawaringin Barat. Pendaftaran online tanpa akun, cepat dan aman.
         </p>
       </footer>
 

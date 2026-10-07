@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase/client';
 import { formFieldService } from '../../lib/services/formFieldService';
+import { emailInvoiceService } from '../../lib/services/emailInvoiceService';
 import { FormField, EventItem } from '../../types/database';
 import { SignatureCanvas } from './SignatureCanvas';
 import { MathCaptcha } from './MathCaptcha';
@@ -187,7 +188,8 @@ export const RegistrationFormModal: React.FC<RegistrationFormModalProps> = ({
 
         setIsSubmitting(false);
         onClose();
-        onSuccess({
+
+        const successData: RegistrationSuccessData = {
           reg_id: rpcData.reg_id,
           nama: rpcData.nama,
           email: rpcData.email,
@@ -200,7 +202,25 @@ export const RegistrationFormModal: React.FC<RegistrationFormModalProps> = ({
           event_harga: event.harga,
           bayar_lanjut: event.bayar_lanjut,
           created_at: new Date().toISOString(),
-        });
+        };
+
+        // Fire-and-forget automatic confirmation email
+        emailInvoiceService.triggerAutoEmail({
+          id: rpcData.id || `reg_${Date.now()}`,
+          reg_id: rpcData.reg_id,
+          event_id: event.id,
+          nama: rpcData.nama,
+          email: rpcData.email,
+          wa: cleanWa,
+          status_bayar: rpcData.status_bayar,
+          status_lulus: rpcData.status_lulus,
+          answers: finalAnswers,
+          created_at: new Date().toISOString(),
+          event_nama: event.nama,
+          event_harga: event.harga,
+        }, 'PENDAFTARAN_DITERIMA').catch(() => {});
+
+        onSuccess(successData);
         return;
       } catch (err: any) {
         setErrorMsg(err.message || 'Gagal mengirim pendaftaran.');

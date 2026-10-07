@@ -16,6 +16,7 @@ import {
   Paperclip
 } from 'lucide-react';
 import { Registration } from '../../../types/database';
+import { getCurrentGoogleUser } from '../../../lib/google/gmailService';
 
 interface EmailTemplateEditorProps {
   templates: EmailTemplateItem[];
@@ -55,6 +56,7 @@ export const EmailTemplateEditor: React.FC<EmailTemplateEditorProps> = ({
   const [testEmailTo, setTestEmailTo] = useState('ananda.poji@gmail.com');
   const [isSendingTest, setIsSendingTest] = useState(false);
   const [testSentMsg, setTestSentMsg] = useState<string | null>(null);
+  const [testErrorMsg, setTestErrorMsg] = useState<string | null>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -105,6 +107,7 @@ export const EmailTemplateEditor: React.FC<EmailTemplateEditorProps> = ({
     if (!testEmailTo.trim()) return;
     setIsSendingTest(true);
     setTestSentMsg(null);
+    setTestErrorMsg(null);
 
     const renderedSubject = emailInvoiceService.replacePlaceholders(activeTemplate.subjek, SIMULATED_PARTICIPANT);
     let renderedHtml = emailInvoiceService.replacePlaceholders(activeTemplate.isi_html, SIMULATED_PARTICIPANT);
@@ -113,16 +116,39 @@ export const EmailTemplateEditor: React.FC<EmailTemplateEditorProps> = ({
       renderedHtml += emailInvoiceService.generateVisualTicketHtml(SIMULATED_PARTICIPANT);
     }
 
+    const attachments: { filename: string; content: string }[] = [];
+    if (activeTemplate.attach_invoice) {
+      try {
+        const pdfBase64 = emailInvoiceService.generateInvoicePdfBase64(SIMULATED_PARTICIPANT);
+        if (pdfBase64) {
+          attachments.push({
+            filename: `Invoice-Resmi-${SIMULATED_PARTICIPANT.reg_id}.pdf`,
+            content: pdfBase64,
+          });
+        }
+      } catch (pdfErr) {
+        console.warn('Gagal membuat PDF attachment:', pdfErr);
+      }
+    }
+
+    const googleUser = getCurrentGoogleUser();
     const res = await emailInvoiceService.sendEmail({
       to: testEmailTo.trim(),
-      subject: `[Uji Coba Resend] ${renderedSubject}`,
+      subject: `[Uji Coba ${googleUser ? 'Gmail' : 'Email'}] ${renderedSubject}`,
       html: renderedHtml,
+      attachments: attachments.length > 0 ? attachments : undefined,
     });
 
     setIsSendingTest(false);
     if (res.success) {
-      setTestSentMsg(res.simulated ? 'Email uji coba berhasil disimulasikan!' : 'Email uji coba berhasil dikirim via Resend!');
-      setTimeout(() => setTestSentMsg(null), 5000);
+      if (res.via === 'gmail') {
+        setTestSentMsg(`Email uji coba BERHASIL dikirim langsung dari akun Google Anda (${googleUser?.email})${attachments.length > 0 ? ' beserta lampiran dokumen Invoice PDF' : ''}! Silakan cek Kotak Masuk email.`);
+      } else {
+        setTestSentMsg(res.simulated ? 'Email uji coba disimulasikan (layanan belum aktif).' : `Email uji coba berhasil dikirim${attachments.length > 0 ? ' beserta lampiran Invoice PDF' : ''}! Silakan cek kotak masuk email Anda.`);
+      }
+      setTimeout(() => setTestSentMsg(null), 7000);
+    } else {
+      setTestErrorMsg(res.error || 'Gagal mengirim email.');
     }
   };
 
@@ -241,6 +267,16 @@ export const EmailTemplateEditor: React.FC<EmailTemplateEditorProps> = ({
           </div>
         )}
 
+        {testErrorMsg && (
+          <div className="p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 text-xs flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+            <div>
+              <strong className="block font-semibold">Gagal mengirim email via Resend:</strong>
+              <span>{testErrorMsg}</span>
+            </div>
+          </div>
+        )}
+
         {activeTab === 'editor' ? (
           <div className="space-y-4 p-5 rounded-2xl bg-white dark:bg-[#201813] border border-stone-200 dark:border-stone-850 shadow-2xs">
             {/* Subject Input */}
@@ -294,40 +330,54 @@ export const EmailTemplateEditor: React.FC<EmailTemplateEditorProps> = ({
               )}
 
               {/* Checkbox Attach Invoice PDF */}
-              <label className="flex items-center gap-2 text-xs font-semibold text-stone-800 dark:text-stone-200 cursor-pointer select-none">
+              <label className="flex items-center gap-2 text-xs font-semibold text-stone-800 dark:text-stone-200 cursor-pointer select-none flex-wrap">
                 <input
                   type="checkbox"
                   checked={Boolean(activeTemplate.attach_invoice)}
                   onChange={(e) => handleUpdateActiveTemplate({ attach_invoice: e.target.checked })}
                   className="rounded text-amber-500 focus:ring-amber-400"
                 />
-                <Paperclip className="w-3.5 h-3.5 text-teal-600" />
+                <Paperclip className="w-3.5 h-3.5 text-teal-600 shrink-0" />
                 <span>Lampirkan Dokumen Invoice PDF Resmi pada Email Ini</span>
+                {Boolean(activeTemplate.attach_invoice) && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-300 border border-teal-300 dark:border-teal-800 animate-in fade-in duration-150">
+                    PDF Terlampir Otomatis 📎
+                  </span>
+                )}
               </label>
             </div>
 
             {/* Actions Bar */}
             <div className="pt-3 border-t border-stone-200 dark:border-stone-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               {/* Test Email Box */}
-              <div className="flex items-center gap-2 w-full sm:w-auto">
-                <Input
-                  type="email"
-                  value={testEmailTo}
-                  onChange={(e) => setTestEmailTo(e.target.value)}
-                  placeholder="email@tujuan-test.com"
-                  className="w-48 text-xs py-1.5"
-                />
-                <Button
-                  type="button"
-                  onClick={handleSendTestEmail}
-                  variant="outline"
-                  size="sm"
-                  isLoading={isSendingTest}
-                  className="text-xs shrink-0"
-                >
-                  <Send className="w-3.5 h-3.5 mr-1" />
-                  Kirim Uji Coba
-                </Button>
+              <div className="space-y-1 w-full sm:w-auto">
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="email"
+                    value={testEmailTo}
+                    onChange={(e) => setTestEmailTo(e.target.value)}
+                    placeholder="cvmasayacreative@gmail.com"
+                    className="w-56 text-xs py-1.5"
+                  />
+                  <Button
+                    type="button"
+                    onClick={handleSendTestEmail}
+                    variant="outline"
+                    size="sm"
+                    isLoading={isSendingTest}
+                    className="text-xs shrink-0"
+                  >
+                    <Send className="w-3.5 h-3.5 mr-1" />
+                    Kirim Uji Coba
+                  </Button>
+                </div>
+                <p className="text-[10px] text-stone-400">
+                  {getCurrentGoogleUser() ? (
+                    <span>*Email akan dikirimkan langsung dari akun resmi Google Anda (<strong className="text-emerald-600 dark:text-emerald-400">{getCurrentGoogleUser()?.email}</strong>) melalui Gmail API.</span>
+                  ) : (
+                    <span>*Hubungkan akun Google Anda di bagian atas untuk pengiriman langsung via Gmail API, atau gunakan server cadangan.</span>
+                  )}
+                </p>
               </div>
 
               {/* Save Button */}
@@ -350,7 +400,11 @@ export const EmailTemplateEditor: React.FC<EmailTemplateEditorProps> = ({
             <div className="p-3 rounded-xl bg-stone-50 dark:bg-stone-900 border border-stone-200 dark:border-stone-850 space-y-1 text-xs">
               <div>
                 <span className="text-stone-400">Dari:</span>{' '}
-                <span className="font-semibold text-stone-700 dark:text-stone-300">KOBAR EXPO 2026 &lt;onboarding@resend.dev&gt;</span>
+                <span className="font-semibold text-stone-700 dark:text-stone-300">
+                  {getCurrentGoogleUser() 
+                    ? `KOBAR EXPO 2026 <${getCurrentGoogleUser()?.email}>` 
+                    : 'KOBAR EXPO 2026 <noreply@kobarexpo.id>'}
+                </span>
               </div>
               <div>
                 <span className="text-stone-400">Kepada:</span>{' '}

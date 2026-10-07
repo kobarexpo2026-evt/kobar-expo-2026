@@ -6,7 +6,8 @@ import {
   STANDARD_EMAIL_TRIGGERS 
 } from '../../../lib/services/emailInvoiceService';
 import { Button } from '../../ui/Button';
-import { X, Send, Mail, CheckCircle2, AlertCircle, Sparkles } from 'lucide-react';
+import { X, Send, Mail, CheckCircle2, AlertCircle, Sparkles, ShieldCheck } from 'lucide-react';
+import { getCurrentGoogleUser } from '../../../lib/google/gmailService';
 
 interface ResendEmailModalProps {
   isOpen: boolean;
@@ -60,18 +61,39 @@ export const ResendEmailModal: React.FC<ResendEmailModalProps> = ({
     setSendSuccess(null);
     setErrorMsg(null);
 
+    const attachments: { filename: string; content: string }[] = [];
+    if (activeTemplate?.attach_invoice) {
+      try {
+        const pdfBase64 = emailInvoiceService.generateInvoicePdfBase64(registration);
+        if (pdfBase64) {
+          attachments.push({
+            filename: `Invoice-Resmi-${registration.reg_id}.pdf`,
+            content: pdfBase64,
+          });
+        }
+      } catch (pdfErr) {
+        console.warn('Gagal membuat PDF invoice:', pdfErr);
+      }
+    }
+
+    const googleUser = getCurrentGoogleUser();
     const res = await emailInvoiceService.sendEmail({
       to: registration.email,
       subject: renderedSubject,
       html: renderedHtml,
+      attachments: attachments.length > 0 ? attachments : undefined,
     });
 
     setIsSending(false);
     if (res.success) {
-      setSendSuccess(res.simulated ? 'Email berhasil disimulasikan!' : 'Email berhasil dikirim via Resend!');
+      if (res.via === 'gmail') {
+        setSendSuccess(`Email berhasil dikirim langsung dari akun Google Anda (${googleUser?.email})${attachments.length > 0 ? ' beserta lampiran dokumen Invoice PDF' : ''}!`);
+      } else {
+        setSendSuccess(res.simulated ? 'Email berhasil disimulasikan!' : `Email berhasil dikirim${attachments.length > 0 ? ' beserta lampiran Invoice PDF' : ''}!`);
+      }
       setTimeout(() => {
         onClose();
-      }, 2000);
+      }, 2500);
     } else {
       setErrorMsg(res.error || 'Gagal mengirim email.');
     }

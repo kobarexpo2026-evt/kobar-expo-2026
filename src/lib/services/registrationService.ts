@@ -233,19 +233,23 @@ export const registrationService = {
   async getRegistrationFiles(registration: Registration): Promise<RegistrationFileItem[]> {
     const items: RegistrationFileItem[] = [];
 
-    // Parse answers for uploaded filenames or signatures
-    const answers = registration.answers || {};
-    for (const [key, val] of Object.entries(answers)) {
-      if (!val) continue;
+    // Helper to process individual value
+    const processVal = async (key: string, val: any, indexSuffix = '') => {
+      if (!val) return;
+      const strVal = String(val).trim();
+      if (!strVal) return;
 
-      const strVal = String(val);
-      const isSignature = key.toLowerCase().includes('pernyataan') || key.toLowerCase().includes('signature') || strVal.includes('Tanda Tangan');
-      const isFile = strVal.endsWith('.pdf') || strVal.endsWith('.jpg') || strVal.endsWith('.jpeg') || strVal.endsWith('.png') || strVal.endsWith('.webp') || isSignature;
+      const isSignature = key.toLowerCase().includes('pernyataan') || key.toLowerCase().includes('signature') || key.toLowerCase().includes('ttd') || strVal.includes('Tanda Tangan') || strVal.startsWith('data:image/');
+      const hasImageExt = /\.(jpg|jpeg|png|webp|gif|svg|bmp)$/i.test(strVal);
+      const isPdf = /\.pdf$/i.test(strVal);
+      const isFile = isPdf || hasImageExt || isSignature || strVal.startsWith('data:') || strVal.startsWith('http');
 
       if (isFile) {
         let signedUrl: string | undefined = undefined;
 
-        if (isSupabaseConfigured && !strVal.startsWith('http') && !strVal.startsWith('data:')) {
+        if (strVal.startsWith('http') || strVal.startsWith('data:')) {
+          signedUrl = strVal;
+        } else if (isSupabaseConfigured) {
           try {
             // Generate temporary 1-hour signed URL from private bucket 'registrations'
             const path = `uploads/${registration.id}/${strVal}`;
@@ -260,23 +264,41 @@ export const registrationService = {
           }
         }
 
-        // Demo sample image fallback
+        // Demo sample image fallback if URL could not be resolved
         if (!signedUrl) {
-          if (strVal.endsWith('.pdf')) {
+          if (isPdf) {
             signedUrl = 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf';
           } else {
             signedUrl = 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&w=800&q=80';
           }
         }
 
+        const isImage = !isPdf && (hasImageExt || isSignature || strVal.startsWith('data:image/') || (!isPdf && signedUrl.includes('unsplash')));
+
         items.push({
-          id: `file-${key}`,
+          id: `file-${key}${indexSuffix}`,
           field_label: key,
-          storage_path: strVal,
-          kind: key.toLowerCase().includes('bukti') ? 'pembayaran' : isSignature ? 'ttd' : 'pendaftaran',
+          storage_path: strVal.length > 50 ? strVal.substring(0, 47) + '...' : strVal,
+          kind: key.toLowerCase().includes('bukti') || key.toLowerCase().includes('bayar') 
+            ? 'pembayaran' 
+            : isSignature 
+            ? 'ttd' 
+            : 'pendaftaran',
           signed_url: signedUrl,
-          is_image: !strVal.endsWith('.pdf'),
+          is_image: isImage,
         });
+      }
+    };
+
+    // Parse answers for uploaded filenames or signatures
+    const answers = registration.answers || {};
+    for (const [key, val] of Object.entries(answers)) {
+      if (Array.isArray(val)) {
+        for (let i = 0; i < val.length; i++) {
+          await processVal(key, val[i], `-${i}`);
+        }
+      } else {
+        await processVal(key, val);
       }
     }
 

@@ -27,7 +27,11 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 pb-20 md:pb-8">
-        <AdminNavbar currentTab={currentTab} onNavigateHome={onNavigateHome} />
+        <AdminNavbar 
+          currentTab={currentTab} 
+          onNavigateHome={onNavigateHome} 
+          onSelectTab={onSelectTab} 
+        />
         
         <main className="flex-1 p-4 md:p-8 max-w-7xl w-full mx-auto animate-in fade-in duration-200">
           {children}

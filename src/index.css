@@ -1,8 +1,10 @@
 @import "tailwindcss";
 
 @theme {
-  --font-fredoka: "Fredoka", cursive, sans-serif;
-  --font-baloo: "Baloo 2", cursive, sans-serif;
+  --font-fredoka: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Plus Jakarta Sans", "Inter", "Helvetica Neue", system-ui, sans-serif;
+  --font-baloo: "SF Pro Text", "SF Pro", -apple-system, BlinkMacSystemFont, "Plus Jakarta Sans", "Inter", "Helvetica Neue", system-ui, sans-serif;
+  --font-sans: "SF Pro Text", "SF Pro", -apple-system, BlinkMacSystemFont, "Plus Jakarta Sans", "Inter", "Helvetica Neue", system-ui, sans-serif;
+  --font-display: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Plus Jakarta Sans", "Inter", "Helvetica Neue", system-ui, sans-serif;
   
   --color-festival-sand: #FFFDF7;
   --color-festival-sand-dark: #18120E;
@@ -36,6 +38,9 @@
 :root {
   color-scheme: light;
   font-family: var(--font-baloo);
+  letter-spacing: -0.012em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 .dark {

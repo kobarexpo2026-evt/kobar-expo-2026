@@ -30,8 +30,8 @@ export const AdminLogin: React.FC<{ onBackToHome: () => void }> = ({ onBackToHom
     }
   };
 
-  const handleQuickSuperAdminLogin = async () => {
-    await login('ananda.poji@gmail.com', 'KobarExpo2026SuperAdmin!');
+  const handleQuickSuperAdminLogin = () => {
+    demoLoginAs('super_admin');
   };
 
   return (

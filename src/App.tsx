@@ -27,8 +27,19 @@ const AppContent: React.FC = () => {
   // Admin active sub-tab ('dashboard' | 'events' | 'builder' | 'registrations' | 'templates' | 'admins')
   const [adminTab, setAdminTab] = useState<string>('dashboard');
 
-  // Sync browser URL / history
+  // Sync browser URL / history & Purge old test sample keys
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedEvents = localStorage.getItem('kobar_expo_events');
+      if (savedEvents && (savedEvents.includes('e1111111') || savedEvents.includes('EVT-KOBAR'))) {
+        localStorage.removeItem('kobar_expo_events');
+      }
+      const savedRegs = localStorage.getItem('kobar_registrations_data');
+      if (savedRegs && (savedRegs.includes('reg-00') || savedRegs.includes('Dina Rahmawati') || savedRegs.includes('EVT-2026-00001'))) {
+        localStorage.removeItem('kobar_registrations_data');
+      }
+    }
+
     const handlePopState = () => {
       if (window.location.pathname.startsWith('/admin')) {
         setCurrentRoute('admin');
