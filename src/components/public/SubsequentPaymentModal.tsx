@@ -5,6 +5,7 @@ import { FormField, Registration } from '../../types/database';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
 import { QrisLightboxModal } from './QrisLightboxModal';
+import { compressImageToDataUrl } from '../../lib/imageCompressor';
 import { 
   X, 
   CreditCard, 
@@ -37,6 +38,8 @@ export const SubsequentPaymentModal: React.FC<SubsequentPaymentModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isQrisLightboxOpen, setIsQrisLightboxOpen] = useState(false);
+  const [isCompressing, setIsCompressing] = useState(false);
+  const [compressionStat, setCompressionStat] = useState<{ name: string; compressedSize: number } | null>(null);
 
   useEffect(() => {
     if (!isOpen || !registration) return;
@@ -76,22 +79,60 @@ export const SubsequentPaymentModal: React.FC<SubsequentPaymentModalProps> = ({
     setFormData((prev) => ({ ...prev, [label]: value }));
   };
 
-  const handleFileUpload = (label: string, e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (label: string, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Rule: File maks 1 MB
-    if (file.size > 1 * 1024 * 1024) {
-      alert(`Ukuran file "${file.name}" melebihi batas maksimal 1 MB! Harap kompres file Anda.`);
-      e.target.value = '';
-      return;
-    }
+    setIsCompressing(true);
 
-    // Save file name/object
-    setFormData((prev) => ({
-      ...prev,
-      [label]: file.name,
-    }));
+    try {
+      if (file.type && file.type.startsWith('image/')) {
+        // Compress & resize image in browser via HTML5 canvas before base64
+        const res = await compressImageToDataUrl(file, {
+          maxWidth: 1280,
+          maxHeight: 1280,
+          quality: 0.8,
+          mimeType: 'image/jpeg',
+        });
+
+        setFormData((prev) => ({
+          ...prev,
+          [label]: res.dataUrl,
+        }));
+
+        setCompressionStat({
+          name: file.name,
+          compressedSize: res.compressedSize,
+        });
+      } else {
+        // PDF or non-image
+        if (file.size > 2 * 1024 * 1024) {
+          alert(`File "${file.name}" melebihi batas 2 MB.`);
+          return;
+        }
+        const reader = new FileReader();
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+
+        setFormData((prev) => ({
+          ...prev,
+          [label]: dataUrl,
+        }));
+
+        setCompressionStat({
+          name: file.name,
+          compressedSize: file.size,
+        });
+      }
+    } catch (err) {
+      console.error('Gagal mengompresi gambar:', err);
+      alert('Terjadi kesalahan saat mengompresi gambar via canvas.');
+    } finally {
+      setIsCompressing(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -255,17 +296,42 @@ export const SubsequentPaymentModal: React.FC<SubsequentPaymentModalProps> = ({
                   )}
 
                   {(f.tipe === 'File' || f.tipe === 'File Multiple') && (
-                    <div>
-                      <label className="block font-semibold text-stone-800 dark:text-stone-200 mb-1">
-                        {f.label} {f.required && <span className="text-rose-500">* (Maks 1 MB)</span>}
+                    <div className="space-y-1.5">
+                      <label className="block font-semibold text-stone-800 dark:text-stone-200">
+                        {f.label} {f.required && <span className="text-rose-500">*</span>}
                       </label>
+                      <p className="text-[11px] text-stone-500 dark:text-stone-400 font-baloo">
+                        Foto bukti otomatis dikompresi & disesuaikan resolusinya di browser sebelum dikirim.
+                      </p>
                       <input
                         type="file"
                         accept="image/*,application/pdf"
                         onChange={(e) => handleFileUpload(f.label, e)}
                         required={f.required && !formData[f.label]}
-                        className="w-full text-xs text-stone-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-teal-50 file:text-teal-700 hover:file:bg-teal-100"
+                        disabled={isCompressing}
+                        className="w-full text-xs text-stone-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-teal-50 file:text-teal-700 hover:file:bg-teal-100 cursor-pointer disabled:opacity-50"
                       />
+
+                      {/* Compressing indicator */}
+                      {isCompressing && (
+                        <div className="flex items-center gap-2 p-2 rounded-xl bg-teal-50 dark:bg-teal-950/30 border border-teal-300 dark:border-teal-800 text-xs text-teal-800 dark:text-teal-200 animate-pulse font-baloo">
+                          <Sparkles className="w-3.5 h-3.5 text-teal-500 animate-spin" />
+                          <span>Mengompresi & mengecilkan resolusi bukti bayar via Canvas...</span>
+                        </div>
+                      )}
+
+                      {/* Compression success badge */}
+                      {!isCompressing && compressionStat && (
+                        <div className="flex items-center gap-2 p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-800 dark:text-emerald-300 font-baloo">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <div className="flex-1 truncate">
+                            <span className="font-semibold">{compressionStat.name}</span>
+                            <span className="text-stone-500 dark:text-stone-400 ml-1.5 text-[11px]">
+                              ({Math.round(compressionStat.compressedSize / 1024)} KB &bull; terkompresi via Canvas)
+                            </span>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 

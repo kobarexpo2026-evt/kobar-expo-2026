@@ -1,6 +1,7 @@
 import { supabase, isSupabaseConfigured } from '../supabase/client';
 import { EventItem, InvitationCode } from '../../types/database';
 import { generateBatchCodes } from '../codeGenerator';
+import { compressImageToFile, compressImageToDataUrl } from '../imageCompressor';
 
 // No sample events - purely database-driven
 const DEFAULT_EVENTS: EventItem[] = [];
@@ -219,41 +220,42 @@ export const eventService = {
     return { success: true };
   },
 
-  // Upload Asset (Banner / QRIS) to Supabase Storage bucket 'assets'
+  // Upload Asset (Banner / QRIS) with in-browser canvas compression
   async uploadAssetFile(file: File, folder: 'banners' | 'qris'): Promise<{ url?: string; error?: string }> {
-    if (file.size > 2 * 1024 * 1024) {
-      return { error: 'Ukuran file terlalu besar. Maksimal 2 MB.' };
-    }
+    try {
+      // Compress and resize image in browser via HTML5 canvas
+      const compressedFile = await compressImageToFile(file, {
+        maxWidth: folder === 'banners' ? 1600 : 800,
+        maxHeight: folder === 'banners' ? 900 : 800,
+        quality: 0.82,
+        mimeType: 'image/jpeg',
+      });
 
-    if (isSupabaseConfigured) {
-      try {
-        const fileExt = file.name.split('.').pop();
+      if (isSupabaseConfigured) {
+        const fileExt = compressedFile.name.split('.').pop() || 'jpg';
         const fileName = `${folder}/${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
         
         const { error: uploadError } = await supabase.storage
           .from('assets')
-          .upload(fileName, file, { upsert: true });
+          .upload(fileName, compressedFile, { upsert: true });
 
         if (uploadError) return { error: uploadError.message };
 
         const { data } = supabase.storage.from('assets').getPublicUrl(fileName);
         return { url: data.publicUrl };
-      } catch (err: any) {
-        return { error: err.message };
       }
-    }
 
-    // Fallback: create an object URL or base64
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        resolve({ url: reader.result as string });
-      };
-      reader.onerror = () => {
-        resolve({ error: 'Gagal memproses file' });
-      };
-      reader.readAsDataURL(file);
-    });
+      // Offline / Local / Preview fallback: convert compressed image to base64
+      const result = await compressImageToDataUrl(compressedFile, {
+        maxWidth: folder === 'banners' ? 1600 : 800,
+        maxHeight: folder === 'banners' ? 900 : 800,
+        quality: 0.82,
+      });
+
+      return { url: result.dataUrl };
+    } catch (err: any) {
+      return { error: err.message || 'Gagal memproses dan mengompresi gambar.' };
+    }
   },
 
   // Fetch Invitation Codes for an event

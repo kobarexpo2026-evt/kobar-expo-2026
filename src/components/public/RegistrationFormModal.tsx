@@ -7,6 +7,7 @@ import { SignatureCanvas } from './SignatureCanvas';
 import { MathCaptcha } from './MathCaptcha';
 import { QrisLightboxModal } from './QrisLightboxModal';
 import { RegistrationSuccessData } from './RegistrationSuccessModal';
+import { compressImageToDataUrl } from '../../lib/imageCompressor';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Badge } from '../ui/Badge';
@@ -59,6 +60,8 @@ export const RegistrationFormModal: React.FC<RegistrationFormModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isQrisLightboxOpen, setIsQrisLightboxOpen] = useState(false);
+  const [compressingFields, setCompressingFields] = useState<Record<string, boolean>>({});
+  const [compressionStats, setCompressionStats] = useState<Record<string, { name: string; compressedSize: number; originalSize: number; ratio: string }>>({});
 
   // Load event dynamic fields
   useEffect(() => {
@@ -107,24 +110,71 @@ export const RegistrationFormModal: React.FC<RegistrationFormModalProps> = ({
     setDynamicAnswers((prev) => ({ ...prev, [label]: updated }));
   };
 
-  const handleFileUpload = (label: string, e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (label: string, e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    // Rule: Maksimal 1 MB per file
-    for (let i = 0; i < files.length; i++) {
-      if (files[i].size > 1 * 1024 * 1024) {
-        alert(`Ukuran file "${files[i].name}" melebihi batas maksimal 1 MB! Harap gunakan file berukuran di bawah 1 MB.`);
-        e.target.value = '';
-        return;
-      }
-    }
+    setCompressingFields((prev) => ({ ...prev, [label]: true }));
 
-    if (files.length === 1) {
-      setDynamicAnswers((prev) => ({ ...prev, [label]: files[0].name }));
-    } else {
-      const names = Array.from(files).map((f) => f.name);
-      setDynamicAnswers((prev) => ({ ...prev, [label]: names }));
+    try {
+      const results: string[] = [];
+      let lastStat: { name: string; compressedSize: number; originalSize: number; ratio: string } | null = null;
+
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+
+        if (file.type && file.type.startsWith('image/')) {
+          // Resize & compress image in browser via HTML5 Canvas before base64
+          const res = await compressImageToDataUrl(file, {
+            maxWidth: 1280,
+            maxHeight: 1280,
+            quality: 0.8,
+            mimeType: 'image/jpeg',
+          });
+
+          results.push(res.dataUrl);
+          lastStat = {
+            name: file.name,
+            originalSize: res.originalSize,
+            compressedSize: res.compressedSize,
+            ratio: res.compressionRatio,
+          };
+        } else {
+          // Non-image file (e.g. PDF)
+          if (file.size > 2 * 1024 * 1024) {
+            alert(`Ukuran file "${file.name}" melebihi batas 2 MB.`);
+            continue;
+          }
+          const reader = new FileReader();
+          const dataUrl = await new Promise<string>((resolve, reject) => {
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          });
+          results.push(dataUrl);
+          lastStat = {
+            name: file.name,
+            originalSize: file.size,
+            compressedSize: file.size,
+            ratio: '100%',
+          };
+        }
+      }
+
+      if (results.length === 1) {
+        setDynamicAnswers((prev) => ({ ...prev, [label]: results[0] }));
+      } else if (results.length > 1) {
+        setDynamicAnswers((prev) => ({ ...prev, [label]: results }));
+      }
+
+      if (lastStat) {
+        setCompressionStats((prev) => ({ ...prev, [label]: lastStat }));
+      }
+    } catch (err: any) {
+      console.error('Gagal mengompresi gambar:', err);
+      alert('Terjadi kesalahan saat mengompresi gambar via canvas.');
+    } finally {
+      setCompressingFields((prev) => ({ ...prev, [label]: false }));
     }
   };
 
@@ -580,18 +630,43 @@ export const RegistrationFormModal: React.FC<RegistrationFormModalProps> = ({
 
                     {/* File & File Multiple Upload */}
                     {(f.tipe === 'File' || f.tipe === 'File Multiple') && (
-                      <div>
-                        <label className="block font-semibold text-stone-800 dark:text-stone-200 mb-1">
-                          {f.label} {f.required && <span className="text-rose-500">* (Batas maks 1 MB per file)</span>}
+                      <div className="space-y-1.5">
+                        <label className="block font-semibold text-stone-800 dark:text-stone-200">
+                          {f.label} {f.required && <span className="text-rose-500">*</span>}
                         </label>
+                        <p className="text-[11px] text-stone-500 dark:text-stone-400 font-baloo">
+                          Foto otomatis dikompresi & disesuaikan resolusinya di browser sebelum dikirim.
+                        </p>
                         <input
                           type="file"
                           accept="image/*,application/pdf"
                           multiple={f.tipe === 'File Multiple'}
                           onChange={(e) => handleFileUpload(f.label, e)}
                           required={f.required && !dynamicAnswers[f.label]}
-                          className="w-full text-xs text-stone-500 file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-amber-50 file:text-amber-700 hover:file:bg-amber-100 dark:file:bg-amber-950/40 dark:file:text-amber-300"
+                          disabled={compressingFields[f.label]}
+                          className="w-full text-xs text-stone-500 file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-amber-50 file:text-amber-700 hover:file:bg-amber-100 dark:file:bg-amber-950/40 dark:file:text-amber-300 cursor-pointer disabled:opacity-50"
                         />
+
+                        {/* Compressing indicator */}
+                        {compressingFields[f.label] && (
+                          <div className="flex items-center gap-2 p-2 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-200 animate-pulse font-baloo">
+                            <Sparkles className="w-3.5 h-3.5 text-amber-500 animate-spin" />
+                            <span>Mengompresi & mengecilkan resolusi gambar via Canvas...</span>
+                          </div>
+                        )}
+
+                        {/* Compression success badge */}
+                        {!compressingFields[f.label] && compressionStats[f.label] && (
+                          <div className="flex items-center gap-2 p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-800 dark:text-emerald-300 font-baloo">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                            <div className="flex-1 truncate">
+                              <span className="font-semibold">{compressionStats[f.label].name}</span>
+                              <span className="text-stone-500 dark:text-stone-400 ml-1.5 text-[11px]">
+                                (Ukuran: {Math.round(compressionStats[f.label].compressedSize / 1024)} KB &bull; terkompresi via Canvas)
+                              </span>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
 

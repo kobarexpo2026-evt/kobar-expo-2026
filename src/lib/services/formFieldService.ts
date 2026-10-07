@@ -1,5 +1,6 @@
 import { supabase, isSupabaseConfigured } from '../supabase/client';
 import { FormField, FormType, FieldType } from '../../types/database';
+import { compressImageToFile, compressImageToDataUrl } from '../imageCompressor';
 
 // Default templates for quick population
 export const DEFAULT_PENDAFTARAN_FIELDS: Omit<FormField, 'id' | 'event_id' | 'created_at'>[] = [
@@ -203,40 +204,41 @@ export const formFieldService = {
     return { success: true, count: validFields.length };
   },
 
-  // Upload image asset for 'Gambar' field type
+  // Upload image asset for 'Gambar' field type with in-browser canvas compression
   async uploadFieldImage(file: File): Promise<{ url?: string; error?: string }> {
-    if (file.size > 2 * 1024 * 1024) {
-      return { error: 'Ukuran file gambar maksimal 2 MB.' };
-    }
+    try {
+      // Compress and resize image in browser via HTML5 canvas
+      const compressedFile = await compressImageToFile(file, {
+        maxWidth: 1400,
+        maxHeight: 1400,
+        quality: 0.82,
+        mimeType: 'image/jpeg',
+      });
 
-    if (isSupabaseConfigured) {
-      try {
-        const fileExt = file.name.split('.').pop();
+      if (isSupabaseConfigured) {
+        const fileExt = compressedFile.name.split('.').pop() || 'jpg';
         const fileName = `builder/${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
         
         const { error: uploadError } = await supabase.storage
           .from('assets')
-          .upload(fileName, file, { upsert: true });
+          .upload(fileName, compressedFile, { upsert: true });
 
         if (uploadError) return { error: uploadError.message };
 
         const { data } = supabase.storage.from('assets').getPublicUrl(fileName);
         return { url: data.publicUrl };
-      } catch (err: any) {
-        return { error: err.message };
       }
-    }
 
-    // Base64 fallback for preview
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        resolve({ url: reader.result as string });
-      };
-      reader.onerror = () => {
-        resolve({ error: 'Gagal memproses file' });
-      };
-      reader.readAsDataURL(file);
-    });
+      // Base64 fallback for local preview
+      const result = await compressImageToDataUrl(compressedFile, {
+        maxWidth: 1400,
+        maxHeight: 1400,
+        quality: 0.82,
+      });
+
+      return { url: result.dataUrl };
+    } catch (err: any) {
+      return { error: err.message || 'Gagal memproses dan mengompresi gambar.' };
+    }
   },
 };

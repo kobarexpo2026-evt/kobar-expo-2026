@@ -62,9 +62,9 @@ export const PublicHero: React.FC<PublicHeroProps> = ({ onExploreClick, onCheckS
         </div>
 
         {/* Main Title */}
-        <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-extrabold font-fredoka text-stone-900 dark:text-stone-100 leading-tight">
-          Pendaftaran Resmi Seluruh Kegiatan{' '}
-          <span className="bg-gradient-to-r from-amber-500 via-rose-500 to-teal-600 bg-clip-text text-transparent">
+        <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-extrabold font-fredoka text-stone-900 dark:text-stone-100 leading-tight tracking-tight">
+          <span className="block">Pendaftaran Resmi Seluruh Kegiatan</span>
+          <span className="block mt-1 sm:mt-2 bg-gradient-to-r from-amber-500 via-rose-500 to-teal-600 bg-clip-text text-transparent">
             Kotawaringin Barat Expo
           </span>
         </h1>
