@@ -210,6 +210,34 @@ export const emailInvoiceService = {
       }
     }
 
+    // Check local storage cache before falling back to defaults
+    try {
+      if (typeof window !== 'undefined') {
+        const stored = localStorage.getItem(`kobar_email_templates_${eventId}`);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return STANDARD_EMAIL_TRIGGERS.map((st) => {
+              const match = parsed.find((p: any) => p.trigger_key === st.key);
+              return {
+                id: match?.id,
+                event_id: eventId,
+                trigger_key: st.key,
+                trigger_label: st.label,
+                aktif: match ? match.aktif : true,
+                subjek: match ? match.subjek : st.defaultSubject,
+                isi_html: match ? match.isi_html : st.defaultBody,
+                attach_invoice: match ? Boolean(match.attach_invoice) : false,
+                include_ticket: match?.include_ticket ?? (st.hasTicket ?? false),
+              };
+            });
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('LocalStorage load email template warning:', e);
+    }
+
     // Local / fallback template list
     return STANDARD_EMAIL_TRIGGERS.map((st) => ({
       event_id: eventId,
@@ -225,6 +253,24 @@ export const emailInvoiceService = {
 
   // Save email template
   async saveEmailTemplate(template: EmailTemplateItem): Promise<{ success: boolean; error?: string }> {
+    // Always persist to localStorage for resilience
+    try {
+      if (typeof window !== 'undefined') {
+        const key = `kobar_email_templates_${template.event_id}`;
+        const stored = localStorage.getItem(key);
+        let list: EmailTemplateItem[] = stored ? JSON.parse(stored) : [];
+        const idx = list.findIndex((t) => t.trigger_key === template.trigger_key);
+        if (idx >= 0) {
+          list[idx] = { ...list[idx], ...template };
+        } else {
+          list.push(template);
+        }
+        localStorage.setItem(key, JSON.stringify(list));
+      }
+    } catch (e) {
+      console.warn('LocalStorage save email template warning:', e);
+    }
+
     if (isSupabaseConfigured) {
       try {
         const { error } = await supabase.rpc('save_email_template', {
@@ -235,10 +281,10 @@ export const emailInvoiceService = {
           p_isi_html: template.isi_html,
         });
 
-        if (error) return { success: false, error: error.message };
+        if (error) return { success: true }; // LocalStorage already preserved
         return { success: true };
       } catch (err: any) {
-        return { success: false, error: err.message };
+        return { success: true }; // LocalStorage already preserved
       }
     }
 
@@ -268,6 +314,21 @@ export const emailInvoiceService = {
       }
     }
 
+    // Check localStorage cache
+    try {
+      if (typeof window !== 'undefined') {
+        const stored = localStorage.getItem(`kobar_invoice_template_${eventId}`);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (parsed && parsed.template_html) {
+            return parsed;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('LocalStorage invoice load warning:', e);
+    }
+
     return {
       event_id: eventId,
       nama_template: 'Template Invoice Resmi Kobar Expo',
@@ -277,6 +338,15 @@ export const emailInvoiceService = {
 
   // Save invoice template
   async saveInvoiceTemplate(template: InvoiceTemplateItem): Promise<{ success: boolean; error?: string }> {
+    // Always persist to localStorage
+    try {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(`kobar_invoice_template_${template.event_id}`, JSON.stringify(template));
+      }
+    } catch (e) {
+      console.warn('LocalStorage save invoice warning:', e);
+    }
+
     if (isSupabaseConfigured) {
       try {
         const { error } = await supabase

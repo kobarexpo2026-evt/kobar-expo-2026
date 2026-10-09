@@ -5,9 +5,10 @@ import {
   signOutGoogle, 
   getCurrentGoogleUser, 
   getGoogleAccessToken,
-  sendGmailMessage
+  sendGmailMessage,
+  GoogleAuthUser,
+  GoogleAuthError
 } from '../../../lib/google/gmailService';
-import { User } from 'firebase/auth';
 import { Button } from '../../ui/Button';
 import { Badge } from '../../ui/Badge';
 import { 
@@ -18,21 +19,35 @@ import {
   ShieldCheck, 
   Sparkles,
   AlertCircle,
-  ExternalLink
+  ExternalLink,
+  Globe,
+  Copy,
+  Check,
+  Server,
+  RefreshCw,
+  X
 } from 'lucide-react';
 
 interface GoogleWorkspaceConnectCardProps {
-  onStatusChange?: (user: User | null) => void;
+  onStatusChange?: (user: GoogleAuthUser | null) => void;
 }
 
 export const GoogleWorkspaceConnectCard: React.FC<GoogleWorkspaceConnectCardProps> = ({
   onStatusChange,
 }) => {
-  const [user, setUser] = useState<User | null>(getCurrentGoogleUser());
+  const [user, setUser] = useState<GoogleAuthUser | null>(getCurrentGoogleUser());
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [testTo, setTestTo] = useState('ananda.poji@gmail.com');
   const [isSendingTest, setIsSendingTest] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; msg: string } | null>(null);
+  
+  // Specific state for Firebase unauthorized-domain error
+  const [unauthorizedError, setUnauthorizedError] = useState<{
+    domain: string;
+    projectId: string;
+    consoleUrl: string;
+  } | null>(null);
+  const [copiedDomain, setCopiedDomain] = useState(false);
 
   useEffect(() => {
     const unsubscribe = initGoogleAuth(
@@ -54,9 +69,24 @@ export const GoogleWorkspaceConnectCard: React.FC<GoogleWorkspaceConnectCardProp
     };
   }, [onStatusChange]);
 
+  const handleCopyDomain = async () => {
+    const domain = unauthorizedError?.domain || (typeof window !== 'undefined' ? window.location.hostname : '');
+    if (!domain) return;
+    try {
+      await navigator.clipboard.writeText(domain);
+      setCopiedDomain(true);
+      setTimeout(() => setCopiedDomain(false), 2500);
+    } catch {
+      // Fallback
+      setCopiedDomain(true);
+      setTimeout(() => setCopiedDomain(false), 2500);
+    }
+  };
+
   const handleSignIn = async () => {
     setIsLoggingIn(true);
     setTestResult(null);
+    setUnauthorizedError(null);
     try {
       const res = await signInWithGoogle();
       if (res) {
@@ -65,10 +95,24 @@ export const GoogleWorkspaceConnectCard: React.FC<GoogleWorkspaceConnectCardProp
         if (res.user.email) setTestTo(res.user.email);
       }
     } catch (err: any) {
-      setTestResult({
-        success: false,
-        msg: err.message || 'Gagal masuk ke akun Google.',
-      });
+      const isDomainErr = 
+        err.isUnauthorizedDomain || 
+        err.code === 'auth/unauthorized-domain' || 
+        (typeof err.message === 'string' && err.message.includes('auth/unauthorized-domain'));
+
+      if (isDomainErr) {
+        const hostname = typeof window !== 'undefined' ? window.location.hostname : 'domain';
+        setUnauthorizedError({
+          domain: err.domain || hostname,
+          projectId: err.projectId || 'gen-lang-client-0207757558',
+          consoleUrl: err.consoleSettingsUrl || `https://console.firebase.google.com/project/gen-lang-client-0207757558/authentication/settings`,
+        });
+      } else {
+        setTestResult({
+          success: false,
+          msg: err.message || 'Gagal masuk ke akun Google.',
+        });
+      }
     } finally {
       setIsLoggingIn(false);
     }
@@ -78,6 +122,7 @@ export const GoogleWorkspaceConnectCard: React.FC<GoogleWorkspaceConnectCardProp
     await signOutGoogle();
     setUser(null);
     if (onStatusChange) onStatusChange(null);
+    setUnauthorizedError(null);
   };
 
   const handleSendQuickTest = async () => {
@@ -155,13 +200,16 @@ export const GoogleWorkspaceConnectCard: React.FC<GoogleWorkspaceConnectCardProp
                   Terhubung via Gmail API
                 </span>
               ) : (
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-stone-100 text-stone-600 dark:bg-stone-800 dark:text-stone-400">
-                  Belum Terhubung
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-stone-100 text-stone-600 dark:bg-stone-800 dark:text-stone-300 border border-stone-200 dark:border-stone-700">
+                  <Server className="w-3 h-3 text-amber-500" />
+                  Mode Server Gateway Aktif (Resend)
                 </span>
               )}
             </div>
-            <p className="text-xs text-stone-500 dark:text-stone-400">
-              Kirim email pendaftaran & invoice langsung menggunakan akun Google Anda (100% masuk Inbox Utama).
+            <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5">
+              {user 
+                ? `Email pendaftaran & invoice resmi dikirimkan langsung dari akun Google Anda (${user.email}).`
+                : 'Kirim email langsung dari akun Google Anda (100% Primary Inbox), atau gunakan pengiriman otomatis via server.'}
             </p>
           </div>
         </div>
@@ -241,7 +289,128 @@ export const GoogleWorkspaceConnectCard: React.FC<GoogleWorkspaceConnectCardProp
         </div>
       )}
 
-      {/* Feedback Alert */}
+      {/* Dedicated Interactive Troubleshooting Card for auth/unauthorized-domain */}
+      {unauthorizedError && (
+        <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-amber-50 to-orange-50 dark:from-stone-900 dark:to-amber-950/40 border-2 border-amber-400/80 dark:border-amber-700/80 shadow-md space-y-4 animate-in fade-in duration-200">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-700 dark:text-amber-400 flex items-center justify-center shrink-0">
+                <Globe className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h4 className="font-bold text-sm text-stone-900 dark:text-stone-100 font-fredoka">
+                    Domain Perlu Ditambahkan di Firebase Console
+                  </h4>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-200 text-amber-900 dark:bg-amber-900/60 dark:text-amber-200 border border-amber-300 dark:border-amber-700">
+                    auth/unauthorized-domain
+                  </span>
+                </div>
+                <p className="text-xs text-stone-600 dark:text-stone-300 mt-1 leading-relaxed">
+                  Google OAuth Firebase memerlukan otorisasi domain untuk situs web ini sebelum dapat login. Tambahkan domain di bawah ini ke Firebase Console Anda:
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setUnauthorizedError(null)}
+              className="text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 p-1 rounded-lg"
+              title="Tutup panduan"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Domain Box with 1-Click Copy */}
+          <div className="p-3 bg-white dark:bg-stone-950 rounded-xl border border-amber-200 dark:border-amber-900/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="space-y-0.5">
+              <span className="text-[11px] font-semibold text-stone-500 uppercase tracking-wider block">
+                Nama Domain Anda:
+              </span>
+              <code className="text-xs font-mono font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-stone-900 px-2 py-0.5 rounded border border-amber-200 dark:border-stone-800 inline-block select-all">
+                {unauthorizedError.domain}
+              </code>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={handleCopyDomain}
+                className="text-xs h-8 px-3"
+              >
+                {copiedDomain ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-600 mr-1" />
+                    <span className="text-emerald-700 dark:text-emerald-400 font-bold">Tersalin!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5 mr-1" />
+                    <span>Salin Domain</span>
+                  </>
+                )}
+              </Button>
+
+              <a
+                href={unauthorizedError.consoleUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold transition-all shadow-xs"
+              >
+                <span>Buka Firebase Console</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            </div>
+          </div>
+
+          {/* Step-by-Step Instructions */}
+          <div className="bg-amber-100/70 dark:bg-stone-900/80 p-3.5 rounded-xl text-xs space-y-2 border border-amber-200/60 dark:border-stone-800">
+            <span className="font-bold text-[11px] uppercase tracking-wider text-amber-900 dark:text-amber-300 block">
+              Langkah Cepat (Hanya butuh 30 detik):
+            </span>
+            <ol className="list-decimal list-inside space-y-1.5 text-stone-700 dark:text-stone-300 leading-relaxed">
+              <li>
+                Klik tombol <strong>Buka Firebase Console</strong> di atas (langsung membuka tab <em>Settings</em> project Anda).
+              </li>
+              <li>
+                Gulir ke bagian <strong>Authorized domains</strong> lalu klik <strong>Add domain</strong>.
+              </li>
+              <li>
+                Tempel domain <code className="font-mono font-bold text-amber-800 dark:text-amber-300 bg-white/80 dark:bg-stone-800 px-1 py-0.5 rounded">{unauthorizedError.domain}</code> lalu klik <strong>Add</strong>.
+              </li>
+              <li>
+                Kembali ke halaman ini dan klik tombol <strong>Coba Hubungkan Akun Google Lagi</strong> di bawah.
+              </li>
+            </ol>
+          </div>
+
+          {/* Reassurance Footer */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1 border-t border-amber-200/60 dark:border-stone-800 text-xs">
+            <div className="flex items-center gap-2 text-stone-600 dark:text-stone-300">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>
+                <strong>Sistem Email Tetap Aktif:</strong> Tiket pendaftaran & invoice otomatis terkirim melalui <em>Server Gateway</em> tanpa kendala.
+              </span>
+            </div>
+
+            <Button
+              type="button"
+              size="sm"
+              variant="festival"
+              onClick={handleSignIn}
+              isLoading={isLoggingIn}
+              className="text-xs font-bold shrink-0 shadow-sm"
+            >
+              <RefreshCw className="w-3.5 h-3.5 mr-1" />
+              Coba Hubungkan Akun Google Lagi
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* General Feedback Alert */}
       {testResult && (
         <div
           className={`p-3 rounded-xl text-xs flex items-start gap-2 animate-in fade-in duration-150 ${
