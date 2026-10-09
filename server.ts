@@ -38,8 +38,10 @@ app.post('/api/send-email', async (req, res) => {
     let fromEmail = process.env.RESEND_FROM_EMAIL || 'KOBAR EXPO 2026 <onboarding@resend.dev>';
     fromEmail = fromEmail.replace(/^["']|["']$/g, '').trim();
 
-    // If Resend API key is present in environment, call the real Resend REST API
-    if (apiKey && apiKey.trim() !== '') {
+    const isDummyKey = !apiKey || apiKey.trim() === '' || apiKey.startsWith('re_1234') || apiKey.includes('placeholder') || apiKey === 're_xxxxxxxx';
+
+    // If Resend API key is present in environment and not a dummy placeholder, call the real Resend REST API
+    if (apiKey && apiKey.trim() !== '' && !isDummyKey) {
       let response = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
@@ -57,6 +59,17 @@ app.post('/api/send-email', async (req, res) => {
       });
 
       let data = await response.json();
+
+      // If API key is rejected as invalid, fallback to simulation mode so registrations/invoices are not blocked
+      if (!response.ok && (response.status === 401 || data.message === 'API key is invalid')) {
+        console.warn(`[Resend API Key Invalid Notice]: Key "${apiKey}" tidak valid. Menggunakan simulator email demo.`);
+        return res.json({
+          success: true,
+          simulated: true,
+          id: `sim_${Date.now()}`,
+          message: 'Email disimulasikan (Kunci API Resend tidak valid / demo).',
+        });
+      }
 
       // If custom domain is not yet verified on Resend, automatically fallback to onboarding@resend.dev
       if (!response.ok && !fromEmail.includes('onboarding@resend.dev')) {
