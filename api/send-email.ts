@@ -30,10 +30,8 @@ export default async function handler(req: any, res: any) {
     let fromEmail = process.env.RESEND_FROM_EMAIL || 'KOBAR EXPO 2026 <onboarding@resend.dev>';
     fromEmail = fromEmail.replace(/^["']|["']$/g, '').trim();
 
-    const isDummyKey = !apiKey || apiKey.trim() === '' || apiKey.startsWith('re_1234') || apiKey.includes('placeholder') || apiKey === 're_xxxxxxxx';
-
-    // If Resend API key is present in Vercel environment variables and not a dummy placeholder, call Resend REST API
-    if (apiKey && apiKey.trim() !== '' && !isDummyKey) {
+    // If Resend API key is present in Vercel environment variables, call Resend REST API
+    if (apiKey && apiKey.trim() !== '') {
       let response = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
@@ -51,16 +49,6 @@ export default async function handler(req: any, res: any) {
       });
 
       let data = await response.json();
-
-      // If API key is rejected as invalid, fallback to simulation mode so registrations/invoices are not blocked
-      if (!response.ok && (response.status === 401 || data.message === 'API key is invalid')) {
-        return res.status(200).json({
-          success: true,
-          simulated: true,
-          id: `sim_${Date.now()}`,
-          message: 'Email disimulasikan (Kunci API Resend tidak valid / demo).',
-        });
-      }
 
       // If custom domain is not yet verified on Resend, automatically fallback to onboarding@resend.dev
       if (!response.ok && !fromEmail.includes('onboarding@resend.dev')) {
