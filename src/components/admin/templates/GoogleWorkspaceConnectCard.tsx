@@ -47,7 +47,8 @@ export const GoogleWorkspaceConnectCard: React.FC<GoogleWorkspaceConnectCardProp
   const [testResult, setTestResult] = useState<{ success: boolean; msg: string } | null>(null);
 
   // Custom Client ID & Setup Guide state
-  const [showSetupGuide, setShowSetupGuide] = useState(false);
+  const hasCustomClientId = typeof window !== 'undefined' ? Boolean(localStorage.getItem('kobar_google_client_id')) : false;
+  const [showSetupGuide, setShowSetupGuide] = useState(!hasCustomClientId);
   const [clientIdInput, setClientIdInput] = useState(getEffectiveGoogleClientId());
   const [savedClientIdSuccess, setSavedClientIdSuccess] = useState(false);
   const [copiedOrigin, setCopiedOrigin] = useState(false);
@@ -380,16 +381,32 @@ export const GoogleWorkspaceConnectCard: React.FC<GoogleWorkspaceConnectCardProp
           </div>
 
           {/* Form Input Custom Client ID */}
-          <div className="p-3.5 rounded-xl bg-amber-50/60 dark:bg-stone-950 border border-amber-200/80 dark:border-stone-800 space-y-2">
-            <label className="block text-xs font-bold text-stone-800 dark:text-stone-200">
-              Google OAuth Client ID Anda (Opsional jika ingin menggunakan akun Google sendiri):
-            </label>
+          <div className="p-4 rounded-xl bg-amber-50/80 dark:bg-stone-950 border-2 border-amber-300 dark:border-amber-800 space-y-2.5">
+            <div className="flex items-center justify-between flex-wrap gap-1.5">
+              <label className="block text-xs font-bold text-stone-900 dark:text-stone-100">
+                Google OAuth Client ID Anda:
+              </label>
+              {hasCustomClientId ? (
+                <span className="text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 px-2 py-0.5 rounded text-[10px] font-bold">
+                  ✓ Client ID Pribadi Aktif
+                </span>
+              ) : (
+                <span className="text-amber-800 dark:text-amber-300 bg-amber-200/80 dark:bg-amber-900/60 border border-amber-300 dark:border-amber-700 px-2 py-0.5 rounded text-[10px] font-bold">
+                  ⚠️ Masih Client ID Sandbox (Penyebab Utama Error 400: origin_mismatch)
+                </span>
+              )}
+            </div>
+
+            <p className="text-[11px] text-stone-600 dark:text-stone-400 leading-relaxed">
+              <strong>PENTING:</strong> Client ID bawaan sistem tidak memiliki izin domain Anda. Agar <strong>Error 400: origin_mismatch</strong> hilang, Anda harus membuat Client ID sendiri di Google Cloud Console menggunakan akun <strong>kobarexpo2026@gmail.com</strong> dan memasukkan URL domain Anda ke <em>Authorized JavaScript origins</em>.
+            </p>
+
             <div className="flex flex-col sm:flex-row sm:items-center gap-2">
               <input
                 type="text"
                 value={clientIdInput}
                 onChange={(e) => setClientIdInput(e.target.value)}
-                placeholder="xxxxxxxxx.apps.googleusercontent.com"
+                placeholder="Contoh: 123456789-abcdefg.apps.googleusercontent.com"
                 className="flex-1 px-3 py-1.5 text-xs font-mono rounded-xl bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 text-stone-900 dark:text-stone-100 focus:outline-none focus:border-amber-500 shadow-2xs"
               />
               <Button
@@ -405,7 +422,7 @@ export const GoogleWorkspaceConnectCard: React.FC<GoogleWorkspaceConnectCardProp
             {savedClientIdSuccess && (
               <p className="text-[11px] font-bold text-emerald-600 flex items-center gap-1 animate-in fade-in">
                 <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>Client ID berhasil disimpan! Silakan klik "Hubungkan Akun Google" di atas.</span>
+                <span>Client ID baru tersimpan! Silakan klik tombol "Hubungkan Akun Google" di atas sekarang.</span>
               </p>
             )}
           </div>
