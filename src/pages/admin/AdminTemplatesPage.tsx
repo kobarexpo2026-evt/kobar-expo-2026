@@ -9,7 +9,7 @@ import {
 } from '../../lib/services/emailInvoiceService';
 import { EmailTemplateEditor } from '../../components/admin/templates/EmailTemplateEditor';
 import { InvoiceTemplateEditor } from '../../components/admin/templates/InvoiceTemplateEditor';
-import { SupabaseEmailGatewayCard } from '../../components/admin/templates/SupabaseEmailGatewayCard';
+import { GoogleWorkspaceConnectCard } from '../../components/admin/templates/GoogleWorkspaceConnectCard';
 import { Badge } from '../../components/ui/Badge';
 import { useAuth } from '../../context/AuthContext';
 import { 
@@ -120,17 +120,17 @@ export const AdminTemplatesPage: React.FC = () => {
       </div>
 
       {/* Main Tabs: Email Otomatis vs Template Invoice PDF */}
-      <div className="flex gap-2 border-b border-stone-200 dark:border-stone-800 pb-2">
+      <div className="flex gap-2 border-b border-stone-200 dark:border-stone-850 pb-2">
         <button
           onClick={() => setActiveTab('email')}
           className={`px-4 py-2 rounded-xl text-xs font-bold font-fredoka transition-all cursor-pointer flex items-center gap-2 ${
             activeTab === 'email'
               ? 'bg-amber-500 text-white shadow-sm'
-              : 'bg-white dark:bg-[#201813] text-stone-600 dark:text-stone-300 border border-stone-200 dark:border-stone-800 hover:bg-stone-50'
+              : 'bg-white dark:bg-[#201813] text-stone-600 dark:text-stone-300 border border-stone-200 dark:border-stone-850 hover:bg-stone-50'
           }`}
         >
           <Mail className="w-3.5 h-3.5" />
-          <span>Tab 1: Email Otomatis (Notifikasi Peserta)</span>
+          <span>Tab 1: Email Otomatis (Google Workspace & Gateway)</span>
         </button>
 
         <button
@@ -138,7 +138,7 @@ export const AdminTemplatesPage: React.FC = () => {
           className={`px-4 py-2 rounded-xl text-xs font-bold font-fredoka transition-all cursor-pointer flex items-center gap-2 ${
             activeTab === 'invoice'
               ? 'bg-teal-600 text-white shadow-sm'
-              : 'bg-white dark:bg-[#201813] text-stone-600 dark:text-stone-300 border border-stone-200 dark:border-stone-800 hover:bg-stone-50'
+              : 'bg-white dark:bg-[#201813] text-stone-600 dark:text-stone-300 border border-stone-200 dark:border-stone-850 hover:bg-stone-50'
           }`}
         >
           <FileText className="w-3.5 h-3.5" />
@@ -146,9 +146,9 @@ export const AdminTemplatesPage: React.FC = () => {
         </button>
       </div>
 
-      {/* Supabase & Server Email Gateway Status Card if in email tab */}
+      {/* Google Workspace Connection Card if in email tab */}
       {activeTab === 'email' && (
-        <SupabaseEmailGatewayCard />
+        <GoogleWorkspaceConnectCard />
       )}
 
       {/* Content Rendering */}

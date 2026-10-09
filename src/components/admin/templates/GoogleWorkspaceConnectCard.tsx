@@ -6,8 +6,9 @@ import {
   getCurrentGoogleUser, 
   getGoogleAccessToken,
   sendGmailMessage,
-  GoogleAuthUser,
-  GoogleAuthError
+  getEffectiveGoogleClientId,
+  setCustomGoogleClientId,
+  GoogleAuthUser
 } from '../../../lib/google/gmailService';
 import { Button } from '../../ui/Button';
 import { Badge } from '../../ui/Badge';
@@ -25,7 +26,11 @@ import {
   Check,
   Server,
   RefreshCw,
-  X
+  X,
+  Settings,
+  ChevronDown,
+  ChevronUp,
+  KeyRound
 } from 'lucide-react';
 
 interface GoogleWorkspaceConnectCardProps {
@@ -37,17 +42,18 @@ export const GoogleWorkspaceConnectCard: React.FC<GoogleWorkspaceConnectCardProp
 }) => {
   const [user, setUser] = useState<GoogleAuthUser | null>(getCurrentGoogleUser());
   const [isLoggingIn, setIsLoggingIn] = useState(false);
-  const [testTo, setTestTo] = useState('ananda.poji@gmail.com');
+  const [testTo, setTestTo] = useState('kobarexpo2026@gmail.com');
   const [isSendingTest, setIsSendingTest] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; msg: string } | null>(null);
-  
-  // Specific state for Firebase unauthorized-domain error
-  const [unauthorizedError, setUnauthorizedError] = useState<{
-    domain: string;
-    projectId: string;
-    consoleUrl: string;
-  } | null>(null);
-  const [copiedDomain, setCopiedDomain] = useState(false);
+
+  // Custom Client ID & Setup Guide state
+  const [showSetupGuide, setShowSetupGuide] = useState(false);
+  const [clientIdInput, setClientIdInput] = useState(getEffectiveGoogleClientId());
+  const [savedClientIdSuccess, setSavedClientIdSuccess] = useState(false);
+  const [copiedOrigin, setCopiedOrigin] = useState(false);
+
+  // Origin mismatch / Error 400 detection state
+  const [originMismatchError, setOriginMismatchError] = useState<{ origin: string } | null>(null);
 
   useEffect(() => {
     const unsubscribe = initGoogleAuth(
@@ -69,24 +75,31 @@ export const GoogleWorkspaceConnectCard: React.FC<GoogleWorkspaceConnectCardProp
     };
   }, [onStatusChange]);
 
-  const handleCopyDomain = async () => {
-    const domain = unauthorizedError?.domain || (typeof window !== 'undefined' ? window.location.hostname : '');
-    if (!domain) return;
+  const currentOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://domain-anda.vercel.app';
+
+  const handleCopyOrigin = async () => {
     try {
-      await navigator.clipboard.writeText(domain);
-      setCopiedDomain(true);
-      setTimeout(() => setCopiedDomain(false), 2500);
+      await navigator.clipboard.writeText(currentOrigin);
+      setCopiedOrigin(true);
+      setTimeout(() => setCopiedOrigin(false), 2500);
     } catch {
-      // Fallback
-      setCopiedDomain(true);
-      setTimeout(() => setCopiedDomain(false), 2500);
+      setCopiedOrigin(true);
+      setTimeout(() => setCopiedOrigin(false), 2500);
     }
+  };
+
+  const handleSaveClientId = () => {
+    setCustomGoogleClientId(clientIdInput.trim());
+    setSavedClientIdSuccess(true);
+    setOriginMismatchError(null);
+    setTestResult(null);
+    setTimeout(() => setSavedClientIdSuccess(false), 3000);
   };
 
   const handleSignIn = async () => {
     setIsLoggingIn(true);
     setTestResult(null);
-    setUnauthorizedError(null);
+    setOriginMismatchError(null);
     try {
       const res = await signInWithGoogle();
       if (res) {
@@ -95,18 +108,9 @@ export const GoogleWorkspaceConnectCard: React.FC<GoogleWorkspaceConnectCardProp
         if (res.user.email) setTestTo(res.user.email);
       }
     } catch (err: any) {
-      const isDomainErr = 
-        err.isUnauthorizedDomain || 
-        err.code === 'auth/unauthorized-domain' || 
-        (typeof err.message === 'string' && err.message.includes('auth/unauthorized-domain'));
-
-      if (isDomainErr) {
-        const hostname = typeof window !== 'undefined' ? window.location.hostname : 'domain';
-        setUnauthorizedError({
-          domain: err.domain || hostname,
-          projectId: err.projectId || 'gen-lang-client-0207757558',
-          consoleUrl: err.consoleSettingsUrl || `https://console.firebase.google.com/project/gen-lang-client-0207757558/authentication/settings`,
-        });
+      if (err?.isOriginMismatch || err?.message?.includes('origin_mismatch') || err?.message?.includes('Error 400')) {
+        setOriginMismatchError({ origin: currentOrigin });
+        setShowSetupGuide(true);
       } else {
         setTestResult({
           success: false,
@@ -122,7 +126,7 @@ export const GoogleWorkspaceConnectCard: React.FC<GoogleWorkspaceConnectCardProp
     await signOutGoogle();
     setUser(null);
     if (onStatusChange) onStatusChange(null);
-    setUnauthorizedError(null);
+    setOriginMismatchError(null);
   };
 
   const handleSendQuickTest = async () => {
@@ -178,6 +182,7 @@ export const GoogleWorkspaceConnectCard: React.FC<GoogleWorkspaceConnectCardProp
 
   return (
     <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-amber-500/10 via-white to-teal-500/10 dark:from-amber-950/20 dark:via-[#201813] dark:to-teal-950/20 border border-amber-200/80 dark:border-amber-900/40 shadow-xs space-y-4">
+      {/* Top Banner Row */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-2xl bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 flex items-center justify-center shadow-xs shrink-0">
@@ -195,27 +200,37 @@ export const GoogleWorkspaceConnectCard: React.FC<GoogleWorkspaceConnectCardProp
                 Integrasi Google Workspace / Gmail
               </h3>
               {user ? (
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
                   Terhubung via Gmail API
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-stone-100 text-stone-600 dark:bg-stone-800 dark:text-stone-300 border border-stone-200 dark:border-stone-700">
-                  <Server className="w-3 h-3 text-amber-500" />
-                  Mode Server Gateway Aktif (Resend)
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-stone-100 text-stone-600 dark:bg-stone-800 dark:text-stone-400">
+                  Belum Terhubung
                 </span>
               )}
             </div>
             <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5">
-              {user 
-                ? `Email pendaftaran & invoice resmi dikirimkan langsung dari akun Google Anda (${user.email}).`
-                : 'Kirim email langsung dari akun Google Anda (100% Primary Inbox), atau gunakan pengiriman otomatis via server.'}
+              Kirim email pendaftaran & invoice langsung menggunakan akun Google Anda (100% masuk Inbox Utama).
             </p>
           </div>
         </div>
 
-        {/* Action Button: Sign In / Out */}
-        <div className="shrink-0">
+        {/* Action Buttons */}
+        <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+          {!user && (
+            <button
+              type="button"
+              onClick={() => setShowSetupGuide(!showSetupGuide)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-800 text-xs font-semibold text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-700 transition-colors cursor-pointer"
+              title="Atur Google Client ID dan Lihat Panduan Setup"
+            >
+              <Settings className="w-3.5 h-3.5 text-amber-500" />
+              <span>Panduan & Client ID</span>
+              {showSetupGuide ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+            </button>
+          )}
+
           {user ? (
             <div className="flex items-center gap-2">
               <div className="text-right hidden md:block">
@@ -267,7 +282,7 @@ export const GoogleWorkspaceConnectCard: React.FC<GoogleWorkspaceConnectCardProp
               value={testTo}
               onChange={(e) => setTestTo(e.target.value)}
               placeholder="email@example.com"
-              className="px-2.5 py-1 text-xs rounded-xl bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-700 w-52 font-mono text-stone-900 dark:text-stone-100 focus:outline-none focus:border-amber-500"
+              className="px-2.5 py-1 text-xs rounded-xl bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-700 w-56 font-mono text-stone-900 dark:text-stone-100 focus:outline-none focus:border-amber-500 shadow-2xs"
             />
             <Button
               type="button"
@@ -289,131 +304,163 @@ export const GoogleWorkspaceConnectCard: React.FC<GoogleWorkspaceConnectCardProp
         </div>
       )}
 
-      {/* Dedicated Interactive Troubleshooting Card for auth/unauthorized-domain */}
-      {unauthorizedError && (
-        <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-amber-50 to-orange-50 dark:from-stone-900 dark:to-amber-950/40 border-2 border-amber-400/80 dark:border-amber-700/80 shadow-md space-y-4 animate-in fade-in duration-200">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-700 dark:text-amber-400 flex items-center justify-center shrink-0">
-                <Globe className="w-5 h-5 text-amber-600 dark:text-amber-400" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h4 className="font-bold text-sm text-stone-900 dark:text-stone-100 font-fredoka">
-                    Domain Perlu Ditambahkan di Firebase Console
-                  </h4>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-200 text-amber-900 dark:bg-amber-900/60 dark:text-amber-200 border border-amber-300 dark:border-amber-700">
-                    auth/unauthorized-domain
-                  </span>
-                </div>
-                <p className="text-xs text-stone-600 dark:text-stone-300 mt-1 leading-relaxed">
-                  Google OAuth Firebase memerlukan otorisasi domain untuk situs web ini sebelum dapat login. Tambahkan domain di bawah ini ke Firebase Console Anda:
-                </p>
-              </div>
+      {/* Origin Mismatch / Error 400 Troubleshooting Alert */}
+      {originMismatchError && (
+        <div className="p-4 sm:p-5 rounded-2xl bg-amber-50 dark:bg-stone-900 border-2 border-amber-400 dark:border-amber-700 shadow-md space-y-3 animate-in fade-in">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-700 dark:text-amber-400 flex items-center justify-center shrink-0">
+              <Globe className="w-5 h-5" />
             </div>
-            <button
-              type="button"
-              onClick={() => setUnauthorizedError(null)}
-              className="text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 p-1 rounded-lg"
-              title="Tutup panduan"
-            >
-              <X className="w-4 h-4" />
-            </button>
+            <div>
+              <h4 className="font-bold text-sm text-stone-900 dark:text-stone-100 flex items-center gap-2">
+                <span>Penyebab Error 400: origin_mismatch</span>
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-200">
+                  Google Cloud Setting
+                </span>
+              </h4>
+              <p className="text-xs text-stone-600 dark:text-stone-300 mt-1 leading-relaxed">
+                Google OAuth memblokir login karena domain aplikasi saat ini belum didaftarkan di <strong>Authorized JavaScript origins</strong> pada Client ID Google Cloud Console Anda.
+              </p>
+            </div>
           </div>
 
-          {/* Domain Box with 1-Click Copy */}
-          <div className="p-3 bg-white dark:bg-stone-950 rounded-xl border border-amber-200 dark:border-amber-900/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="space-y-0.5">
-              <span className="text-[11px] font-semibold text-stone-500 uppercase tracking-wider block">
-                Nama Domain Anda:
-              </span>
+          {/* Quick Origin Copy Box */}
+          <div className="p-3 bg-white dark:bg-stone-950 rounded-xl border border-amber-200 dark:border-stone-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+            <div>
+              <span className="text-[11px] text-stone-500 block font-semibold">Salin URL Domain Anda:</span>
               <code className="text-xs font-mono font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-stone-900 px-2 py-0.5 rounded border border-amber-200 dark:border-stone-800 inline-block select-all">
-                {unauthorizedError.domain}
+                {originMismatchError.origin}
               </code>
-            </div>
-
-            <div className="flex items-center gap-2 shrink-0">
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={handleCopyDomain}
-                className="text-xs h-8 px-3"
-              >
-                {copiedDomain ? (
-                  <>
-                    <Check className="w-3.5 h-3.5 text-emerald-600 mr-1" />
-                    <span className="text-emerald-700 dark:text-emerald-400 font-bold">Tersalin!</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-3.5 h-3.5 mr-1" />
-                    <span>Salin Domain</span>
-                  </>
-                )}
-              </Button>
-
-              <a
-                href={unauthorizedError.consoleUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold transition-all shadow-xs"
-              >
-                <span>Buka Firebase Console</span>
-                <ExternalLink className="w-3.5 h-3.5" />
-              </a>
-            </div>
-          </div>
-
-          {/* Step-by-Step Instructions */}
-          <div className="bg-amber-100/70 dark:bg-stone-900/80 p-3.5 rounded-xl text-xs space-y-2 border border-amber-200/60 dark:border-stone-800">
-            <span className="font-bold text-[11px] uppercase tracking-wider text-amber-900 dark:text-amber-300 block">
-              Langkah Cepat (Hanya butuh 30 detik):
-            </span>
-            <ol className="list-decimal list-inside space-y-1.5 text-stone-700 dark:text-stone-300 leading-relaxed">
-              <li>
-                Klik tombol <strong>Buka Firebase Console</strong> di atas (langsung membuka tab <em>Settings</em> project Anda).
-              </li>
-              <li>
-                Gulir ke bagian <strong>Authorized domains</strong> lalu klik <strong>Add domain</strong>.
-              </li>
-              <li>
-                Tempel domain <code className="font-mono font-bold text-amber-800 dark:text-amber-300 bg-white/80 dark:bg-stone-800 px-1 py-0.5 rounded">{unauthorizedError.domain}</code> lalu klik <strong>Add</strong>.
-              </li>
-              <li>
-                Kembali ke halaman ini dan klik tombol <strong>Coba Hubungkan Akun Google Lagi</strong> di bawah.
-              </li>
-            </ol>
-          </div>
-
-          {/* Reassurance Footer */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1 border-t border-amber-200/60 dark:border-stone-800 text-xs">
-            <div className="flex items-center gap-2 text-stone-600 dark:text-stone-300">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-              <span>
-                <strong>Sistem Email Tetap Aktif:</strong> Tiket pendaftaran & invoice otomatis terkirim melalui <em>Server Gateway</em> tanpa kendala.
-              </span>
             </div>
 
             <Button
               type="button"
               size="sm"
-              variant="festival"
-              onClick={handleSignIn}
-              isLoading={isLoggingIn}
-              className="text-xs font-bold shrink-0 shadow-sm"
+              variant="outline"
+              onClick={handleCopyOrigin}
+              className="text-xs h-8 px-3"
             >
-              <RefreshCw className="w-3.5 h-3.5 mr-1" />
-              Coba Hubungkan Akun Google Lagi
+              {copiedOrigin ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-emerald-600 mr-1" />
+                  <span className="text-emerald-700 dark:text-emerald-400 font-bold">Tersalin!</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3.5 h-3.5 mr-1" />
+                  <span>Salin URL Origin</span>
+                </>
+              )}
             </Button>
+          </div>
+
+          <p className="text-xs text-stone-500 leading-relaxed">
+            👉 Buka Google Cloud Console &gt; <strong>APIs & Services &gt; Credentials</strong> &gt; Edit OAuth 2.0 Client ID Anda &gt; Tempel URL di atas ke kolom <strong>Authorized JavaScript origins</strong> lalu Simpan.
+          </p>
+        </div>
+      )}
+
+      {/* Collapsible Setup Guide & Custom Client ID Configuration */}
+      {showSetupGuide && (
+        <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 shadow-sm space-y-4 animate-in fade-in">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <KeyRound className="w-4 h-4 text-amber-500" />
+              <h4 className="font-bold text-xs uppercase tracking-wider text-stone-900 dark:text-stone-100 font-fredoka">
+                Panduan Setup Gmail API & Pengaturan Google Client ID
+              </h4>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowSetupGuide(false)}
+              className="text-stone-400 hover:text-stone-600 p-1"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Form Input Custom Client ID */}
+          <div className="p-3.5 rounded-xl bg-amber-50/60 dark:bg-stone-950 border border-amber-200/80 dark:border-stone-800 space-y-2">
+            <label className="block text-xs font-bold text-stone-800 dark:text-stone-200">
+              Google OAuth Client ID Anda (Opsional jika ingin menggunakan akun Google sendiri):
+            </label>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+              <input
+                type="text"
+                value={clientIdInput}
+                onChange={(e) => setClientIdInput(e.target.value)}
+                placeholder="xxxxxxxxx.apps.googleusercontent.com"
+                className="flex-1 px-3 py-1.5 text-xs font-mono rounded-xl bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 text-stone-900 dark:text-stone-100 focus:outline-none focus:border-amber-500 shadow-2xs"
+              />
+              <Button
+                type="button"
+                size="sm"
+                variant="festival"
+                onClick={handleSaveClientId}
+                className="text-xs h-8 px-4 font-bold shrink-0"
+              >
+                Simpan Client ID
+              </Button>
+            </div>
+            {savedClientIdSuccess && (
+              <p className="text-[11px] font-bold text-emerald-600 flex items-center gap-1 animate-in fade-in">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>Client ID berhasil disimpan! Silakan klik "Hubungkan Akun Google" di atas.</span>
+              </p>
+            )}
+          </div>
+
+          {/* 6 Step Setup Guide */}
+          <div className="space-y-2 text-xs text-stone-600 dark:text-stone-300">
+            <p className="font-semibold text-stone-800 dark:text-stone-200">
+              Cara Membuat Google OAuth Client ID Sendiri (Gratis di Google Cloud Console):
+            </p>
+            <ol className="list-decimal list-inside space-y-1.5 pl-1 leading-relaxed">
+              <li>
+                Buka <a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer" className="text-amber-600 dark:text-amber-400 font-bold underline inline-flex items-center gap-0.5">Google Cloud Console <ExternalLink className="w-3 h-3 inline" /></a> menggunakan akun Google Anda (<strong>kobarexpo2026@gmail.com</strong>).
+              </li>
+              <li>
+                Buat Project baru (misalnya dengan nama <strong>KOBAR EXPO 2026</strong>).
+              </li>
+              <li>
+                Buka menu <strong>APIs &amp; Services &gt; Library</strong>, cari <strong>Gmail API</strong>, lalu klik <strong>Enable</strong> (Aktifkan).
+              </li>
+              <li>
+                Buka menu <strong>OAuth consent screen</strong>:
+                <ul className="list-disc list-inside pl-4 mt-1 space-y-0.5 text-[11px] text-stone-500">
+                  <li>Pilih <strong>External</strong>, lalu isi Nama Aplikasi &amp; email Anda.</li>
+                  <li>Di bagian <strong>Scopes</strong>, tambahkan: <code className="bg-stone-100 dark:bg-stone-800 px-1 rounded">https://www.googleapis.com/auth/gmail.send</code></li>
+                  <li>Di bagian <strong>Test users</strong>, tambahkan email Anda (<code className="bg-stone-100 dark:bg-stone-800 px-1 rounded">kobarexpo2026@gmail.com</code>).</li>
+                </ul>
+              </li>
+              <li>
+                Buka menu <strong>Credentials &gt; Create Credentials &gt; OAuth client ID</strong>:
+                <ul className="list-disc list-inside pl-4 mt-1 space-y-0.5 text-[11px] text-stone-500">
+                  <li>Application type: Pilih <strong>Web application</strong>.</li>
+                  <li>Di bagian <strong>Authorized JavaScript origins</strong>, tambahkan:
+                    <div className="flex items-center gap-2 mt-1">
+                      <code className="bg-white dark:bg-stone-800 px-2 py-0.5 rounded border text-[11px] font-mono font-bold text-amber-700 dark:text-amber-400">{currentOrigin}</code>
+                      <button onClick={handleCopyOrigin} className="text-[10px] text-amber-600 underline cursor-pointer">{copiedOrigin ? 'Tersalin!' : 'Salin URL'}</button>
+                    </div>
+                  </li>
+                </ul>
+              </li>
+              <li>
+                Salin <strong>Client ID</strong> yang diberikan, tempelkan pada kolom input di atas, lalu klik <strong>Simpan Client ID</strong>.
+              </li>
+            </ol>
+          </div>
+
+          <div className="p-3 rounded-xl bg-stone-50 dark:bg-stone-800/60 border border-stone-200 dark:border-stone-700 text-xs text-stone-500 flex items-center justify-between gap-2">
+            <span>💡 <strong>Cadangan Otomatis:</strong> Jika tidak ingin repot setup Google Cloud, email tetap dikirim otomatis oleh Server Gateway (Resend).</span>
           </div>
         </div>
       )}
 
-      {/* General Feedback Alert */}
+      {/* General Test Result Feedback Alert */}
       {testResult && (
         <div
-          className={`p-3 rounded-xl text-xs flex items-start gap-2 animate-in fade-in duration-150 ${
+          className={`p-3.5 rounded-xl text-xs flex items-start gap-2 animate-in fade-in duration-150 ${
             testResult.success
               ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800'
               : 'bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200 border border-rose-200 dark:border-rose-800'

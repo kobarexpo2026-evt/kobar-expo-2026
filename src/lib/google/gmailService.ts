@@ -39,6 +39,30 @@ export interface GoogleAuthError extends Error {
 
 let activeGoogleUser: GoogleAuthUser | null = null;
 
+/**
+ * Get configured Google OAuth Client ID (from localStorage, VITE_GOOGLE_CLIENT_ID, or fallback config)
+ */
+export const getEffectiveGoogleClientId = (): string => {
+  if (typeof window !== 'undefined') {
+    const custom = localStorage.getItem('kobar_google_client_id');
+    if (custom && custom.trim()) return custom.trim();
+  }
+  return (import.meta.env.VITE_GOOGLE_CLIENT_ID as string) || firebaseConfig.oAuthClientId || '';
+};
+
+/**
+ * Set custom Google OAuth Client ID into localStorage
+ */
+export const setCustomGoogleClientId = (id: string): void => {
+  if (typeof window !== 'undefined') {
+    if (id && id.trim()) {
+      localStorage.setItem('kobar_google_client_id', id.trim());
+    } else {
+      localStorage.removeItem('kobar_google_client_id');
+    }
+  }
+};
+
 export interface GmailAttachment {
   filename: string;
   mimeType?: string;
@@ -105,7 +129,8 @@ export const signInWithGoogle = async (): Promise<{ user: GoogleAuthUser; access
 
     // Attempt 1: Google Identity Services (GIS) Token Client
     // This connects directly to Google OAuth without triggering Firebase Auth domain blocking
-    if (firebaseConfig.oAuthClientId && typeof window !== 'undefined') {
+    const effectiveClientId = getEffectiveGoogleClientId();
+    if (effectiveClientId && typeof window !== 'undefined') {
       try {
         await loadGisScript();
         const google = (window as any).google;
@@ -113,10 +138,26 @@ export const signInWithGoogle = async (): Promise<{ user: GoogleAuthUser; access
           const gisResult = await new Promise<{ user: GoogleAuthUser; accessToken: string }>((resolve, reject) => {
             try {
               const client = google.accounts.oauth2.initTokenClient({
-                client_id: firebaseConfig.oAuthClientId,
+                client_id: effectiveClientId,
                 scope: 'https://www.googleapis.com/auth/gmail.send email profile openid',
+                error_callback: (err: any) => {
+                  if (err?.type === 'popup_closed') {
+                    reject(new Error('Login dibatalkan (jendela Google ditutup).'));
+                  } else {
+                    reject(new Error(err?.message || 'Gagal membuka Google OAuth popup.'));
+                  }
+                },
                 callback: async (resp: any) => {
                   if (resp.error) {
+                    if (resp.error === 'origin_mismatch' || resp.error.includes('origin_mismatch')) {
+                      const err: any = new Error(
+                        `Error 400 (origin_mismatch): Domain "${window.location.origin}" belum didaftarkan di Authorized JavaScript origins Google Cloud Console.`
+                      );
+                      err.isOriginMismatch = true;
+                      err.origin = window.location.origin;
+                      reject(err);
+                      return;
+                    }
                     reject(new Error(resp.error_description || resp.error));
                     return;
                   }
@@ -155,7 +196,8 @@ export const signInWithGoogle = async (): Promise<{ user: GoogleAuthUser; access
 
           return gisResult;
         }
-      } catch (gisErr) {
+      } catch (gisErr: any) {
+        if (gisErr?.isOriginMismatch) throw gisErr;
         console.warn('Metode GIS tidak berhasil, beralih ke Firebase Auth popup:', gisErr);
       }
     }
