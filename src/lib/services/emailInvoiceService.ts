@@ -273,6 +273,21 @@ export const emailInvoiceService = {
 
     if (isSupabaseConfigured) {
       try {
+        // Attempt 1: Direct table upsert
+        const { error: upsertErr } = await supabase
+          .from('email_templates')
+          .upsert({
+            event_id: template.event_id,
+            trigger_key: template.trigger_key,
+            aktif: template.aktif,
+            subjek: template.subjek,
+            isi_html: template.isi_html,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'event_id, trigger_key' });
+
+        if (!upsertErr) return { success: true };
+
+        // Attempt 2: RPC if upsert fails
         const { error } = await supabase.rpc('save_email_template', {
           p_event_id: template.event_id,
           p_trigger_key: template.trigger_key,

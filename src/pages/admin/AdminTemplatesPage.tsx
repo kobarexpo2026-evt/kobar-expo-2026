@@ -9,7 +9,7 @@ import {
 } from '../../lib/services/emailInvoiceService';
 import { EmailTemplateEditor } from '../../components/admin/templates/EmailTemplateEditor';
 import { InvoiceTemplateEditor } from '../../components/admin/templates/InvoiceTemplateEditor';
-import { GoogleWorkspaceConnectCard } from '../../components/admin/templates/GoogleWorkspaceConnectCard';
+import { SupabaseEmailGatewayCard } from '../../components/admin/templates/SupabaseEmailGatewayCard';
 import { Badge } from '../../components/ui/Badge';
 import { useAuth } from '../../context/AuthContext';
 import { 
@@ -98,7 +98,7 @@ export const AdminTemplatesPage: React.FC = () => {
             </Badge>
           </div>
           <p className="text-xs text-stone-500 dark:text-stone-400 mt-1">
-            Konfigurasi otomatisasi pengiriman email via Resend, tiket visual HTML, dan layout invoice resmi.
+            Konfigurasi otomatisasi pengiriman email notifikasi peserta via Supabase & Server Gateway, tiket visual HTML, dan layout invoice resmi.
           </p>
         </div>
 
@@ -130,7 +130,7 @@ export const AdminTemplatesPage: React.FC = () => {
           }`}
         >
           <Mail className="w-3.5 h-3.5" />
-          <span>Tab 1: Email Otomatis (Google Workspace & Resend)</span>
+          <span>Tab 1: Email Otomatis (Notifikasi Peserta)</span>
         </button>
 
         <button
@@ -146,9 +146,9 @@ export const AdminTemplatesPage: React.FC = () => {
         </button>
       </div>
 
-      {/* Google Workspace Connection Card if in email tab */}
+      {/* Supabase & Server Email Gateway Status Card if in email tab */}
       {activeTab === 'email' && (
-        <GoogleWorkspaceConnectCard />
+        <SupabaseEmailGatewayCard />
       )}
 
       {/* Content Rendering */}

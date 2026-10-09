@@ -16,7 +16,6 @@ import {
   Paperclip
 } from 'lucide-react';
 import { Registration } from '../../../types/database';
-import { getCurrentGoogleUser } from '../../../lib/google/gmailService';
 
 interface EmailTemplateEditorProps {
   templates: EmailTemplateItem[];
@@ -131,21 +130,16 @@ export const EmailTemplateEditor: React.FC<EmailTemplateEditorProps> = ({
       }
     }
 
-    const googleUser = getCurrentGoogleUser();
     const res = await emailInvoiceService.sendEmail({
       to: testEmailTo.trim(),
-      subject: `[Uji Coba ${googleUser ? 'Gmail' : 'Email'}] ${renderedSubject}`,
+      subject: `[Uji Coba Notifikasi] ${renderedSubject}`,
       html: renderedHtml,
       attachments: attachments.length > 0 ? attachments : undefined,
     });
 
     setIsSendingTest(false);
     if (res.success) {
-      if (res.via === 'gmail') {
-        setTestSentMsg(`Email uji coba BERHASIL dikirim langsung dari akun Google Anda (${googleUser?.email})${attachments.length > 0 ? ' beserta lampiran dokumen Invoice PDF' : ''}! Silakan cek Kotak Masuk email.`);
-      } else {
-        setTestSentMsg(res.simulated ? 'Email uji coba disimulasikan (layanan belum aktif).' : `Email uji coba berhasil dikirim${attachments.length > 0 ? ' beserta lampiran Invoice PDF' : ''}! Silakan cek kotak masuk email Anda.`);
-      }
+      setTestSentMsg(res.simulated ? 'Email uji coba disimulasikan (layanan belum aktif).' : `Email uji coba berhasil dikirim${attachments.length > 0 ? ' beserta lampiran dokumen Invoice PDF' : ''}! Silakan cek kotak masuk email Anda.`);
       setTimeout(() => setTestSentMsg(null), 7000);
     } else {
       setTestErrorMsg(res.error || 'Gagal mengirim email.');
@@ -372,11 +366,7 @@ export const EmailTemplateEditor: React.FC<EmailTemplateEditorProps> = ({
                   </Button>
                 </div>
                 <p className="text-[10px] text-stone-400">
-                  {getCurrentGoogleUser() ? (
-                    <span>*Email akan dikirimkan langsung dari akun resmi Google Anda (<strong className="text-emerald-600 dark:text-emerald-400">{getCurrentGoogleUser()?.email}</strong>) melalui Gmail API.</span>
-                  ) : (
-                    <span>*Hubungkan akun Google Anda di bagian atas untuk pengiriman langsung via Gmail API, atau gunakan server cadangan.</span>
-                  )}
+                  *Email uji coba dikirimkan melalui Server Gateway backend dan format tersimpan di Supabase.
                 </p>
               </div>
 
@@ -401,9 +391,7 @@ export const EmailTemplateEditor: React.FC<EmailTemplateEditorProps> = ({
               <div>
                 <span className="text-stone-400">Dari:</span>{' '}
                 <span className="font-semibold text-stone-700 dark:text-stone-300">
-                  {getCurrentGoogleUser() 
-                    ? `KOBAR EXPO 2026 <${getCurrentGoogleUser()?.email}>` 
-                    : 'KOBAR EXPO 2026 <noreply@kobarexpo.id>'}
+                  KOBAR EXPO 2026 &lt;panitia@kobarexpo.id&gt;
                 </span>
               </div>
               <div>
